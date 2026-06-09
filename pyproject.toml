@@ -1,0 +1,19 @@
+[project]
+name = "mcp-da-vinci"
+version = "0.1.0"
+description = "MCP server exposing the DaVinci Resolve scripting API to an LLM"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { file = "LICENSE" }
+authors = [{ name = "Amreet Khuntia" }]
+dependencies = [
+    "mcp[cli]>=1.2.0",
+]
+
+[dependency-groups]
+dev = []
+
+[tool.uv]
+# This is an application, not an installable library, so uv should not try to
+# build/install the project itself — only manage its dependencies.
+package = false
