@@ -7,6 +7,7 @@
   "author": "Amreet Khuntia",
   "scripts": {
     "cli": "python.exe cli.py",
+    "console": "python.exe console.py",
     "inspector": "mcp-inspector python.exe server.py",
     "serve": "python.exe server.py",
     "serve:http": "cross-env RESOLVE_MCP_TRANSPORT=streamable-http python.exe server.py"

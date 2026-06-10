@@ -81,6 +81,25 @@ npm run inspector  # launches @modelcontextprotocol/inspector against python.exe
 
 Arg types (int / array / optional) are coerced automatically from each tool's JSON schema.
 
+### Interactive console (`console.py`)
+
+Prefer a long-running session? `console.py` holds one warm Resolve connection and takes
+slash commands until you `/quit`:
+
+```text
+$ python.exe console.py          # or: npm run console
+Connected: DaVinci Resolve Studio 19.1.3.7
+21 tools loaded. Type /help for the list, /quit to exit.
+resolve> /list_timelines
+resolve> /get_timeline_info --name "Timeline 1"
+resolve> /help create_timeline
+resolve> /create_timeline --name smoke-test
+resolve> /quit
+```
+
+Same arg syntax as the CLI (`--key value`, repeat a flag for arrays, `--debug` for tracebacks).
+Bad args / tool errors are printed but don't drop the session.
+
 ## Use from Claude Code
 
 `.mcp.json` registers the server at project scope. Restart Claude Code (or run `/mcp`) so it
@@ -98,6 +117,33 @@ Test"*. If you cloned to a different WSL distro/path, update the UNC path in `.m
 
 **Render** — `list_render_formats`, `list_render_codecs`, `set_render_format_and_codec`,
 `add_render_job`, `start_render`, `stop_render`, `get_render_status`
+
+**Fusion** (node graph on a timeline clip's comp — defaults to the playhead clip; target others
+with `--clip_name` / `--comp_index` / `--comp_name`)
+- *Comps* — `fusion_list_comps`, `fusion_add_comp`, `fusion_set_active_comp`
+- *Graph* — `fusion_list_nodes`, `fusion_add_node`, `fusion_insert_node` (auto-wires
+  `MediaIn1 → node → MediaOut1`), `fusion_connect`, `fusion_delete_node`, `fusion_rename_node`
+- *Pull config* — `fusion_get_node` (ids + datatypes + values + animated/expression),
+  `fusion_get_node_settings` (full `GetCurrentSettings` dump), `fusion_get_keyframes`
+- *Set params* — `fusion_set_value` (Number), `fusion_set_text` (Text/FuID),
+  `fusion_set_point` (2D, 0..1 space), `fusion_set_expression`
+- *Animate* — `fusion_set_keyframe`, `fusion_delete_animation`
+- *Presets* — `fusion_save_node_setting`, `fusion_load_node_setting`, `fusion_import_setting`
+
+The read-current-state-then-edit loop: `fusion_get_node` (find the input id + datatype) →
+`fusion_set_value`/`fusion_set_keyframe`. Node types use Fusion registry ids (`Blur`, `Merge`,
+`Transform`, `TextPlus`, …); input ids vary per node (a Blur's strength is `XBlurSize`, not `Blur`).
+
+```bash
+python.exe cli.py fusion_insert_node --node_type Blur --name MyBlur   # splice into the chain
+python.exe cli.py fusion_get_node --name MyBlur                       # discover input ids
+python.exe cli.py fusion_set_value --node MyBlur --input_id XBlurSize --value 25
+python.exe cli.py fusion_set_keyframe --node MyBlur --input_id XBlurSize --value 0 --frame 0
+```
+
+> Note: auto-animating an input (first `fusion_set_keyframe`) seeds an extra keyframe at the
+> playhead's current frame. Read tools (`fusion_list_*`, `fusion_get_*`) are non-destructive; all
+> others mutate the open project — test graph edits on a throwaway clip first.
 
 ## OpenAI-compatible / HTTP transport (future)
 

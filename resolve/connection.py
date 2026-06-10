@@ -13,6 +13,7 @@ launched (Claude Code, MCP Inspector, or a bare ``python.exe`` invocation).
 
 from __future__ import annotations
 
+import contextlib
 import importlib.util
 import os
 import sys
@@ -146,3 +147,115 @@ def find_clips_by_name(names: list[str]):
     if missing:
         raise RuntimeError(f"Clips not found in media pool: {missing}")
     return [found[n] for n in wanted]
+
+
+# --- Fusion accessors ----------------------------------------------------------
+def get_fusion():
+    """Return the Fusion application object."""
+    return get_resolve().Fusion()
+
+
+def get_current_video_item(clip_name: str | None = None):
+    """Return a timeline video item — the playhead clip, or one matched by name.
+
+    When ``clip_name`` is given, scans every video track of the current timeline
+    for a clip whose name matches (mirrors :func:`find_clips_by_name`).
+    """
+    timeline = get_current_timeline()
+    if clip_name is None:
+        item = timeline.GetCurrentVideoItem()
+        if item is None:
+            raise RuntimeError(
+                "No video clip under the playhead. Move the playhead onto a clip "
+                "or pass clip_name."
+            )
+        return item
+
+    for idx in range(1, timeline.GetTrackCount("video") + 1):
+        for item in timeline.GetItemListInTrack("video", idx) or []:
+            if item.GetName() == clip_name:
+                return item
+    raise RuntimeError(f"No video clip named {clip_name!r} in the current timeline.")
+
+
+def get_comp(
+    clip_name: str | None = None,
+    comp_index: int = 1,
+    comp_name: str | None = None,
+    create: bool = False,
+):
+    """Resolve the target Fusion composition.
+
+    Picks the clip (playhead or ``clip_name``), then the comp by ``comp_name`` or
+    1-based ``comp_index``. With ``create=True`` an empty comp is added when the
+    clip has none. Falls back to the Fusion page's current comp if there is no
+    current video item.
+    """
+    try:
+        item = get_current_video_item(clip_name)
+    except RuntimeError:
+        if clip_name is None:
+            comp = get_fusion().GetCurrentComp()
+            if comp is not None:
+                return comp
+        raise
+
+    count = item.GetFusionCompCount()
+    if count < 1:
+        if create:
+            comp = item.AddFusionComp()
+            if comp is None:
+                raise RuntimeError("Failed to add a Fusion composition to the clip.")
+            return comp
+        raise RuntimeError(
+            f"Clip {item.GetName()!r} has no Fusion composition. "
+            "Call fusion_add_comp first (or pass create=True)."
+        )
+
+    if comp_name:
+        comp = item.GetFusionCompByName(comp_name)
+        if comp is None:
+            raise RuntimeError(
+                f"No Fusion comp named {comp_name!r} on clip {item.GetName()!r}. "
+                f"Available: {item.GetFusionCompNameList()}"
+            )
+        return comp
+
+    if not 1 <= comp_index <= count:
+        raise RuntimeError(
+            f"comp_index {comp_index} out of range (clip has {count} comp(s))."
+        )
+    return item.GetFusionCompByIndex(comp_index)
+
+
+def find_fusion_tool(comp, name: str):
+    """Return the named tool in a comp, or raise listing the available names."""
+    tool = comp.FindTool(name)
+    if tool is None:
+        available = [
+            t.GetAttrs().get("TOOLS_Name") for t in (comp.GetToolList() or {}).values()
+        ]
+        raise RuntimeError(f"No node named {name!r} in comp. Available: {available}")
+    return tool
+
+
+@contextlib.contextmanager
+def comp_lock(comp):
+    """Wrap a batch of comp edits in Lock()/Unlock() for speed and UI stability."""
+    comp.Lock()
+    try:
+        yield comp
+    finally:
+        comp.Unlock()
+
+
+def to_jsonable(obj):
+    """Coerce Fusion setting/keyframe tables into JSON-safe Python values."""
+    if isinstance(obj, dict):
+        return {str(k): to_jsonable(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [to_jsonable(v) for v in obj]
+    if isinstance(obj, (str, int, float, bool)) or obj is None:
+        return obj
+    # Fusion PyRemoteObject and other opaque handles -> string repr.
+    return str(obj)
