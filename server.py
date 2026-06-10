@@ -16,7 +16,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from resolve.app import mcp
 
 # Importing these modules registers the @mcp.tool() decorators. noqa: F401
-from tools import inspect, edit, render, fusion  # noqa: E402, F401
+from tools import inspect, edit, render, fusion, frames  # noqa: E402, F401
 
 
 def main() -> None:

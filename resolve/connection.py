@@ -149,10 +149,40 @@ def find_clips_by_name(names: list[str]):
     return [found[n] for n in wanted]
 
 
+def frame_to_timecode(frame: int, fps: float) -> str:
+    """Absolute timeline frame -> "HH:MM:SS:FF" at the nominal integer rate.
+
+    Non-drop math (23.976 -> 24, 29.97 -> 30); for drop-frame timelines pass a
+    timecode string to the calling tool instead of a frame number.
+    """
+    nominal = round(fps)
+    total_seconds, ff = divmod(int(frame), nominal)
+    mm, ss = divmod(total_seconds, 60)
+    hh, mm = divmod(mm, 60)
+    return f"{hh:02d}:{mm:02d}:{ss:02d}:{ff:02d}"
+
+
 # --- Fusion accessors ----------------------------------------------------------
 def get_fusion():
     """Return the Fusion application object."""
     return get_resolve().Fusion()
+
+
+def get_bmd():
+    """Return the native fusionscript module (bmd utilities: readfile/writefile).
+
+    DaVinciResolveScript aliases itself to the loaded fusionscript DLL module,
+    so after get_resolve() the module is already in sys.modules.
+    """
+    get_resolve()  # ensures fusionscript.dll is loaded
+    for name in ("fusionscript", "DaVinciResolveScript", "BlackmagicFusion"):
+        mod = sys.modules.get(name)
+        if mod is not None and hasattr(mod, "readfile"):
+            return mod
+    raise RuntimeError(
+        "Fusion's scripting module is unavailable (no loaded module exposes "
+        "readfile). This should not happen once get_resolve() has connected."
+    )
 
 
 def get_current_video_item(clip_name: str | None = None):
@@ -219,13 +249,31 @@ def get_comp(
                 f"No Fusion comp named {comp_name!r} on clip {item.GetName()!r}. "
                 f"Available: {item.GetFusionCompNameList()}"
             )
-        return comp
+        return _require_live_comp(comp, item)
 
     if not 1 <= comp_index <= count:
         raise RuntimeError(
             f"comp_index {comp_index} out of range (clip has {count} comp(s))."
         )
-    return item.GetFusionCompByIndex(comp_index)
+    return _require_live_comp(item.GetFusionCompByIndex(comp_index), item)
+
+
+def _require_live_comp(comp, item):
+    """Guard against stale comp handles.
+
+    Resolve only exposes a scriptable comp for the clip whose comp is loaded
+    (normally the current video item); other clips' handles answer with an
+    empty tool list. Every real timeline comp has at least MediaOut1, so an
+    empty list means "not loaded", not "empty comp".
+    """
+    if comp is not None and (comp.GetToolList() or {}):
+        return comp
+    raise RuntimeError(
+        f"The Fusion comp on clip {item.GetName()!r} is not currently loaded, "
+        "so it cannot be scripted. Move the playhead onto that clip — it must "
+        "be the topmost visible clip (set_playhead, or disable covering "
+        "tracks) — then retry."
+    )
 
 
 def find_fusion_tool(comp, name: str):

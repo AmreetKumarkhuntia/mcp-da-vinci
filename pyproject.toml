@@ -8,6 +8,7 @@ license = { file = "LICENSE" }
 authors = [{ name = "Amreet Khuntia" }]
 dependencies = [
     "mcp[cli]>=1.2.0",
+    "pillow>=11",
 ]
 
 [dependency-groups]

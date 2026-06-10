@@ -58,8 +58,37 @@ def _required(tool) -> list[str]:
 
 
 # --- output --------------------------------------------------------------------
+def _print_image(img) -> None:
+    """Save MCP Image content to a temp file and print where it landed."""
+    import tempfile
+
+    data = img.data if img.data is not None else open(img.path, "rb").read()
+    suffix = f".{img._format.lower()}" if getattr(img, "_format", None) else ".png"
+    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as fh:
+        fh.write(data)
+        path = fh.name
+    dims = ""
+    try:
+        from PIL import Image as PILImage
+
+        with PILImage.open(path) as im:
+            dims = f" {im.width}x{im.height}"
+    except Exception:  # noqa: BLE001 - dimensions are decoration only
+        pass
+    print(f"[image{suffix}{dims}, {len(data)} bytes] -> {path}")
+
+
 def _print(obj) -> None:
-    if isinstance(obj, (dict, list)):
+    from mcp.server.fastmcp import Image as MCPImage
+
+    if isinstance(obj, MCPImage):
+        _print_image(obj)
+    elif isinstance(obj, (list, tuple)) and any(
+        isinstance(item, MCPImage) for item in obj
+    ):
+        for item in obj:
+            _print(item)
+    elif isinstance(obj, (dict, list)):
         print(json.dumps(obj, indent=2, default=str))
     else:
         print(obj)

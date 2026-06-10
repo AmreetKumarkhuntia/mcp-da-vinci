@@ -6,6 +6,7 @@ from resolve.app import mcp
 from resolve.connection import (
     find_clips_by_name,
     find_timeline_by_name,
+    frame_to_timecode,
     get_current_project,
     get_current_timeline,
     get_media_pool,
@@ -94,6 +95,52 @@ def add_timeline_marker(
             "(a marker may already exist at that frame)."
         )
     return {"frame": frame, "color": color, "name": name}
+
+
+@mcp.tool()
+def insert_fusion_composition() -> dict:
+    """Insert an empty Fusion Composition generator clip at the playhead.
+
+    The blank canvas for from-scratch motion graphics (titles, lower thirds):
+    no media needed — build its comp with the fusion_* tools afterwards.
+    Duration follows the project's standard generator length (default 5s).
+    """
+    timeline = get_current_timeline()
+    item = timeline.InsertFusionCompositionIntoTimeline()
+    if item is None:
+        raise RuntimeError(
+            "InsertFusionCompositionIntoTimeline failed — ensure a timeline is "
+            "active and the playhead is over empty track space (edit page)."
+        )
+    return {
+        "clip": item.GetName(),
+        "timeline_start_frame": item.GetStart(),
+        "timeline_end_frame": item.GetEnd(),
+    }
+
+
+@mcp.tool()
+def set_playhead(timecode: str | None = None, frame: int | None = None) -> dict:
+    """Move the playhead to ``timecode`` ("HH:MM:SS:FF") or absolute ``frame``.
+
+    ``frame`` uses the same basis as get_timeline_info's start_frame/end_frame
+    (non-drop conversion; pass a timecode for drop-frame timelines). Rejected
+    on the fusion/media pages — open_page("edit") first.
+    """
+    if (timecode is None) == (frame is None):
+        raise ValueError("Pass exactly one of timecode / frame.")
+    timeline = get_current_timeline()
+    if frame is not None:
+        timecode = frame_to_timecode(
+            frame, float(timeline.GetSetting("timelineFrameRate"))
+        )
+    if not timeline.SetCurrentTimecode(timecode):
+        raise RuntimeError(
+            f"SetCurrentTimecode({timecode!r}) failed — it is rejected on the "
+            "fusion/media pages (open_page('edit') first) and the target must "
+            "lie within the timeline range."
+        )
+    return {"current_timecode": timeline.GetCurrentTimecode()}
 
 
 @mcp.tool()

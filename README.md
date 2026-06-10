@@ -1,8 +1,11 @@
 # mcp-da-vinci
 
 An [MCP](https://modelcontextprotocol.io) server that exposes the **DaVinci Resolve**
-scripting API to an LLM. v1 covers **inspection**, **core editing** (import media, build
-timelines, markers), and the **render queue**.
+scripting API to an LLM. Covers **inspection**, **core editing** (import media, build
+timelines, markers, playhead), the **render queue**, the **Fusion node graph** (motion
+graphics: nodes, keyframes with easing, motion paths, modifiers), and **frame capture** —
+`grab_frame` returns the rendered timeline frame as an image, so the model can *see* what
+it just edited.
 
 ## How it connects (read this first)
 
@@ -15,13 +18,17 @@ interpreter (`python.exe`) to run it.
 ```
 mcp-da-vinci/
 ├── server.py            # FastMCP entrypoint + transport selection
+├── cli.py               # dev CLI: call any tool as python.exe cli.py <tool> --arg v
+├── console.py           # interactive REPL with one warm Resolve connection
 ├── resolve/
 │   ├── app.py           # shared FastMCP instance
 │   └── connection.py    # get_resolve(): loads the API, env fallbacks, helpers
 ├── tools/
 │   ├── inspect.py       # read-only tools
-│   ├── edit.py          # media-pool + timeline mutations
-│   └── render.py        # render-queue tools
+│   ├── edit.py          # media-pool + timeline mutations, playhead, pages
+│   ├── render.py        # render-queue tools
+│   ├── fusion.py        # Fusion node graph: build, inspect, animate
+│   └── frames.py        # grab_frame: timeline frame -> MCP image content
 ├── .mcp.json            # Claude Code registration (project scope)
 └── requirements.txt
 ```
@@ -37,10 +44,11 @@ mcp-da-vinci/
 
 ## Prerequisites
 
-1. **Install the MCP SDK into Windows Python** (the interpreter that can reach Resolve):
+1. **Install the deps into Windows Python** (the interpreter that can reach Resolve):
    ```
-   python.exe -m pip install "mcp[cli]"     # or: python.exe -m pip install -r requirements.txt
+   python.exe -m pip install "mcp[cli]" pillow     # or: python.exe -m pip install -r requirements.txt
    ```
+   (`pillow` is used by `grab_frame` to downscale/re-encode captured frames.)
 2. In Resolve: **Preferences → System → General → External scripting using → `Local`**,
    then restart Resolve.
 3. Resolve must be **running** for any tool call to work.
@@ -67,7 +75,7 @@ python.exe -c "import resolve.connection as c; print(c.get_resolve().GetProductN
 # -> DaVinci Resolve
 
 # 2. Call any tool like a function via the dev CLI (fastest debug loop)
-python.exe cli.py                                   # list all 21 tools (grouped)
+python.exe cli.py                                   # list all tools (grouped by module)
 python.exe cli.py get_timeline_info --name "Timeline 1"
 python.exe cli.py <tool> --help                     # show a tool's parameters
 python.exe cli.py import_media --paths "D:\\a.mp4" --paths "D:\\b.mp4"   # repeat flag for arrays
@@ -89,7 +97,7 @@ slash commands until you `/quit`:
 ```text
 $ python.exe console.py          # or: npm run console
 Connected: DaVinci Resolve Studio 19.1.3.7
-21 tools loaded. Type /help for the list, /quit to exit.
+51 tools loaded. Type /help for the list, /quit to exit.
 resolve> /list_timelines
 resolve> /get_timeline_info --name "Timeline 1"
 resolve> /help create_timeline
@@ -113,37 +121,56 @@ Test"*. If you cloned to a different WSL distro/path, update the UNC path in `.m
 `list_timelines`, `get_timeline_info`, `list_media_pool`, `get_render_queue`
 
 **Edit** — `import_media`, `create_timeline`, `create_timeline_from_clips`,
-`append_clips_to_timeline`, `set_current_timeline`, `add_timeline_marker`, `open_page`
+`append_clips_to_timeline`, `set_current_timeline`, `add_timeline_marker`, `open_page`,
+`set_playhead` (timecode or absolute frame; rejected on the fusion/media pages),
+`insert_fusion_composition` (empty Fusion generator clip — the blank canvas for titles)
 
 **Render** — `list_render_formats`, `list_render_codecs`, `set_render_format_and_codec`,
 `add_render_job`, `start_render`, `stop_render`, `get_render_status`
 
+**Frames** — `grab_frame [--timecode | --frame] [--max_width] [--jpeg_quality]`: captures the
+rendered timeline frame (grades + Fusion output included) and returns it as MCP image
+content, so the model can see its edit. Round-trips through the gallery
+(`GrabStill → ExportStills → cleanup`); briefly switches to the color page only when the
+playhead must move while on the fusion/media pages, and restores the page after. Via the
+CLI/console the image is saved to a temp file and its path printed.
+
 **Fusion** (node graph on a timeline clip's comp — defaults to the playhead clip; target others
 with `--clip_name` / `--comp_index` / `--comp_name`)
-- *Comps* — `fusion_list_comps`, `fusion_add_comp`, `fusion_set_active_comp`
+- *Comps* — `fusion_list_comps`, `fusion_add_comp`, `fusion_set_active_comp`,
+  `fusion_get_comp_info` (comp time ranges + timeline mapping — read this before animating),
+  `fusion_set_comp_time`
 - *Graph* — `fusion_list_nodes`, `fusion_add_node`, `fusion_insert_node` (auto-wires
   `MediaIn1 → node → MediaOut1`), `fusion_connect`, `fusion_delete_node`, `fusion_rename_node`
-- *Pull config* — `fusion_get_node` (ids + datatypes + values + animated/expression),
-  `fusion_get_node_settings` (full `GetCurrentSettings` dump), `fusion_get_keyframes`
+- *Pull config* — `fusion_get_node` (ids + datatypes + values + animated/expression; use
+  `--filter` on huge nodes — TextPlus has ~300 inputs), `fusion_get_node_settings` (full
+  `GetCurrentSettings` dump), `fusion_get_keyframes` (rich per-key table for splines),
+  `fusion_sample_input` (evaluate an input at given frames — verify animation numerically)
 - *Set params* — `fusion_set_value` (Number), `fusion_set_text` (Text/FuID),
   `fusion_set_point` (2D, 0..1 space), `fusion_set_expression`
-- *Animate* — `fusion_set_keyframe`, `fusion_delete_animation`
+- *Animate* — `fusion_set_keyframe` (single), `fusion_set_keyframes` (batch, defines the
+  whole curve with `--interpolation linear|ease_in|ease_out|ease_in_out|hold`),
+  `fusion_set_point_keyframe` (motion paths via XYPath), `fusion_add_modifier`
+  (Perturb/Shake/Follower/...), `fusion_delete_animation` (keeps the on-screen value)
 - *Presets* — `fusion_save_node_setting`, `fusion_load_node_setting`, `fusion_import_setting`
 
-The read-current-state-then-edit loop: `fusion_get_node` (find the input id + datatype) →
-`fusion_set_value`/`fusion_set_keyframe`. Node types use Fusion registry ids (`Blur`, `Merge`,
-`Transform`, `TextPlus`, …); input ids vary per node (a Blur's strength is `XBlurSize`, not `Blur`).
+The edit loop: `fusion_get_comp_info` (frame range) → `fusion_get_node --filter ...` (find the
+input id + datatype) → set values / keyframes → `fusion_sample_input` (numeric check) →
+`grab_frame` (visual check). Node types use Fusion registry ids (`Blur`, `Merge`, `Transform`,
+`TextPlus`, …); input ids vary per node (a Blur's strength is `XBlurSize`, not `Blur`).
 
 ```bash
 python.exe cli.py fusion_insert_node --node_type Blur --name MyBlur   # splice into the chain
-python.exe cli.py fusion_get_node --name MyBlur                       # discover input ids
-python.exe cli.py fusion_set_value --node MyBlur --input_id XBlurSize --value 25
-python.exe cli.py fusion_set_keyframe --node MyBlur --input_id XBlurSize --value 0 --frame 0
+python.exe cli.py fusion_get_node --name MyBlur --filter blur         # discover input ids
+python.exe cli.py fusion_set_keyframes --node MyBlur --input_id XBlurSize \
+    --frames 0 --frames 24 --values 25 --values 0 --interpolation ease_out
+python.exe cli.py grab_frame --frame 86412                            # look at the result
 ```
 
-> Note: auto-animating an input (first `fusion_set_keyframe`) seeds an extra keyframe at the
-> playhead's current frame. Read tools (`fusion_list_*`, `fusion_get_*`) are non-destructive; all
-> others mutate the open project — test graph edits on a throwaway clip first.
+> Notes: a clip's comp is only scriptable while it is the **loaded** comp (playhead on the
+> clip, topmost visible track) — the tools raise a clear error otherwise. Read tools
+> (`fusion_list_*`, `fusion_get_*`, `fusion_sample_input`) are non-destructive; all others
+> mutate the open project — test graph edits on a throwaway clip first.
 
 ## OpenAI-compatible / HTTP transport (future)
 
