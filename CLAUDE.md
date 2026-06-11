@@ -81,3 +81,14 @@ REPL, slash commands). Windows paths everywhere a file reaches Resolve.
   concurrent UI activity (page switches) — re-check with `fusion_list_nodes` once
   before assuming it's gone.
 - `.setting` paths and render/import paths are Windows paths on the Resolve machine.
+
+## 3D motion graphics — use the skills, don't re-derive
+
+3D work (camera moves, extruded text, motion blur) lives in skills so sessions stay cheap —
+prefer them over re-probing or re-deriving:
+- `davinci-fusion-node-reference` — verified node input-id cheatsheet; read it **instead of**
+  `fusion_get_node` on 100–260-input nodes (saves tokens).
+- `davinci-fusion-3d` — 3D scene toolbox (wiring, lighting, motion blur, gotchas).
+- `davinci-3d-camera-move` — staging-first camera-move recipe (clarify the staging first).
+- `docs/fusion-3d-notes.md` — known limits + tooling TODOs. Notably: the generator clip is a
+  fixed **5 s** and has **no script resize**, so 8 s/16 s requests need a manual drag-extend + re-time.
