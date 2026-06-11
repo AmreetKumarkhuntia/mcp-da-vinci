@@ -85,6 +85,16 @@ Each item: what bit, the root cause, the current workaround, and a concrete TODO
 - **TODO:** `grab_frames(frames=[…])` returning a contact sheet (or a short low-res
   preview clip) for one round-trip review of a whole sequence.
 
+### 11. Can't enumerate a combo / FuID input's options
+- **Symptom:** `Renderer3D.RendererType` (Software / OpenGL / …), `Shape3D.Shape`, blend-mode
+  and other FuID "combo" inputs only expose their *current* value via `fusion_get_node`, so the
+  valid options must be known or guessed (e.g. `SurfaceCubeInputs`, `RendererOpenGL`). This is
+  exactly what bit picking a 3D renderer or a cube shape.
+- **TODO:** surface a combo input's option list (its MultiButton/ComboControl items) — e.g.
+  `fusion_get_node` returning an `options` array for FuID inputs, or a `fusion_get_input_options`
+  helper. Unblocks reliable renderer/shape/blend selection without trial-and-error. A friendly
+  `fusion_set_renderer(node, "software"|"opengl")` could sit on top.
+
 ## Already-known (in CLAUDE.md), reconfirmed in 3D
 - No undo over scripting → always prototype on a throwaway `create_timeline` + comp.
 - `fusion_set_keyframes` replaces all keys and applies one easing across the curve; a
@@ -95,5 +105,5 @@ Each item: what bit, the root cause, the current workaround, and a concrete TODO
 ## Suggested priority
 1. #3 light aliases + #6 `connect_scene` + #7 vector/color setters (kill the most call volume).
 2. #5 motion-blur one-shot + #4 lighting note (the "make it look 3D" path).
-3. #1/#10 the bigger wins: text extents/alignment and batch frame review.
+3. #1/#10/#11 the bigger wins: text extents/alignment, batch frame review, combo-option discovery.
 4. #9 duration — investigate feasibility.

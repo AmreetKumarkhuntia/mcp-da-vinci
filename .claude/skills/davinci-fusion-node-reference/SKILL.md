@@ -34,7 +34,13 @@ block (bottom).
 
 ## Renderer3D  (~110 inputs) — 3D → 2D image
 - `SceneInput` (DataType3D) — scene in (from Merge3D); auto-selects the scene's Camera3D.
-- `RendererType` (FuID, "RendererSoftware") — software is required for motion blur.
+- `RendererType` (FuID, "RendererSoftware") — **selects the 3D renderer**; it's a FuID, so set
+  it with `fusion_set_text`. Verified value: `RendererSoftware` (CPU; full motion blur + lighting,
+  reliable over remote GrabStill, slower). Other standard option: `RendererOpenGL` (GPU, fast
+  preview) — *exact id + whether it grabs correctly headless not yet confirmed live*; a UV/bake
+  renderer may also exist. Each renderer exposes its own sub-nest (`RendererSoftware.*`,
+  `RendererOpenGL.*`). NB: combo options can't be listed via `fusion_get_node` (it returns only
+  the current value) — see `docs/fusion-3d-notes.md`.
 - `RendererSoftware.LightingEnabled` (Number, **0**) — OFF by default → geometry flat; set 1
   for shading. `RendererSoftware.ShadowsEnabled` (0). `RendererSoftware.Channels.*` aux passes.
 - Motion blur: `MotionBlur` (Number, 0) → 1; then `Quality` (Number, **2** → ~16),

@@ -79,7 +79,11 @@ Renderer3D → (optionally over a 2D Background via a Merge) → MediaOut1
 2. Add `LightDirectional` + `LightAmbient`, connect both into Merge3D.
 3. Aim the directional (e.g. `Transform3DOp.Rotate.X ≈ -30`, `.Y ≈ 25`, `Intensity ≈ 0.8`),
    ambient `Intensity ≈ 0.4` as fill — tune from grabs for the look you want.
-- `RendererType` is already `RendererSoftware` (required for motion blur).
+- **Renderer selection** — `Renderer3D.RendererType` (a FuID, set with `fusion_set_text`) picks
+  the renderer: `RendererSoftware` (default; CPU, full motion blur + lighting, reliable when
+  grabbing — use for final motion-blur renders) vs `RendererOpenGL` (GPU, fast preview; confirm
+  the exact id and that it grabs headless before relying on it). Each renderer has its own
+  `<RendererType>.*` sub-inputs.
 
 ## Motion blur
 On the `Renderer3D`: `MotionBlur=1`, then `Quality=16` (default 2 is too choppy),
