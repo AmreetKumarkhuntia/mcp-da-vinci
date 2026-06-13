@@ -30,43 +30,52 @@ block (bottom).
 ## Merge3D  (~38+ inputs) — the 3D scene combiner
 - `SceneInput1`, `SceneInput2`, … (DataType3D) — connect each child (geometry, camera, lights)
   **strictly in order**; every connection grows one new empty trailing slot. No skip/parallel.
+  `fusion_connect_scene --source X --merge3d Merge3D1` fills the next free slot for you.
 - Has its own `Transform3DOp.*` — transforms the whole merged scene at once.
 
 ## Renderer3D  (~110 inputs) — 3D → 2D image
 - `SceneInput` (DataType3D) — scene in (from Merge3D); auto-selects the scene's Camera3D.
 - `RendererType` (FuID, "RendererSoftware") — **selects the 3D renderer**; it's a FuID, so set
-  it with `fusion_set_text`. Verified value: `RendererSoftware` (CPU; full motion blur + lighting,
-  reliable over remote GrabStill, slower). Other standard option: `RendererOpenGL` (GPU, fast
-  preview) — *exact id + whether it grabs correctly headless not yet confirmed live*; a UV/bake
-  renderer may also exist. Each renderer exposes its own sub-nest (`RendererSoftware.*`,
-  `RendererOpenGL.*`). NB: combo options can't be listed via `fusion_get_node` (it returns only
-  the current value) — see `docs/fusion-3d-notes.md`.
+  it with `fusion_set_text`. Options (confirmed live via `fusion_get_node` `options`):
+  `RendererSoftware` (CPU; full motion blur + lighting, reliable over remote GrabStill, slower),
+  `RendererOpenGL` (GPU, fast preview; confirm it grabs correctly headless before relying on it),
+  `RendererOpenGLUV` (UV/bake). Each renderer exposes its own sub-nest (`RendererSoftware.*`,
+  `RendererOpenGL.*`).
 - `RendererSoftware.LightingEnabled` (Number, **0**) — OFF by default → geometry flat; set 1
-  for shading. `RendererSoftware.ShadowsEnabled` (0). `RendererSoftware.Channels.*` aux passes.
+  for shading (or `fusion_enable_lighting`). `RendererSoftware.ShadowsEnabled` (0).
+  `RendererSoftware.Channels.*` aux passes.
 - Motion blur: `MotionBlur` (Number, 0) → 1; then `Quality` (Number, **2** → ~16),
-  `ShutterAngle` (Number, 180), `SampleSpread` (Number, 1).
+  `ShutterAngle` (Number, 180), `SampleSpread` (Number, 1) — or `fusion_enable_motion_blur` for
+  all four in one call.
 
 ## Text3D  (~257 inputs) — auto-spawns a `…ExtrusionProfile` LUTBezier helper node
 - Text: `StyledText` (Text, "") — the string. `TextText` (Number, 1).
 - Size: `Size` (Number, 1.0) is the font size (ignore the many other `*Size*` inputs).
 - 3D depth: `ExtrusionDepth` (Number, **0** = flat — set ~0.12); `Extrusion`, `ExtrusionStyle`,
   `ExtrusionSubdivisions`, `CustomExtrusionSubdivisions` (40), `BevelTexture` (Image).
-- Fill colour: `Red1` / `Green1` / `Blue1` (Number, 1.0), `Alpha1`; bevel/spec variants exist.
-- `Transform3DOp.ScaleLock` (Number, 1) — set 0 to keyframe `Scale.X/Y/Z` independently.
-- **Justification is inert via scripting**: `HorizontalJustificationCenter/Left/Right`, `…New`
-  (3), `Vertical*` — setting them does NOT change the render (verified pixel-identical). Text
-  stays left/baseline anchored → center geometrically (a 4-digit string at `Size 1` ≈ 0.89
-  world units wide; origin `X = center − width/2`, `Y ≈ −0.12`).
+- Fill colour: `Red1` / `Green1` / `Blue1` (Number, 1.0), `Alpha1` (or `fusion_set_color`);
+  bevel/spec variants exist.
+- `Transform3DOp.ScaleLock` (Number, 1) — set 0 to keyframe `Scale.X/Y/Z` independently
+  (`fusion_set_scale3d` clears the lock and sets a uniform scale in one call).
+- **Justification is inert via scripting** — both `SetInput` *and* a `SaveSettings`/`LoadSettings`
+  reload (probed live): `HorizontalJustificationNew` stays locked at 3.0 and the render is
+  byte-identical across values. Don't retry either route. Text stays left/baseline anchored →
+  center geometrically (a 4-digit string at `Size 1` ≈ 0.89 world units wide; origin
+  `X = center − width/2`, `Y ≈ −0.12`).
 
 ## Shape3D  (~105–146 inputs, varies by shape)
-- `Shape` (FuID, "SurfacePlaneInputs") — set `SurfaceCubeInputs` for a cube (other surfaces
-  follow `Surface<Name>Inputs`: Sphere/Cylinder/Cone/Torus — confirm names live).
+- `Shape` (FuID, "SurfacePlaneInputs") — set `SurfaceCubeInputs` for a cube. Full option list
+  (confirmed live via `fusion_get_node` `options`): `SurfacePlaneInputs`, `SurfaceCubeInputs`,
+  `SurfaceSphereInputs`, `SurfaceCylinderInputs`, `SurfaceConeInputs`, `SurfaceTorusInputs`,
+  `SurfaceIcoInputs`.
 - Plane dims under `SurfacePlaneInputs.*`; cube under `SurfaceCubeInputs.Width/Height/Depth`
   (Number, 1) with `SurfaceCubeInputs.SizeLock` (Number, **1** → 0 for independent dims).
 - Per-shape: `…Inputs.Visibility.IsVisible` (1), `…Inputs.BlendMode.SW.BlendMode` (FuID,
   **"Additive"**), subdivisions, matte, lighting flags.
 - **Gotcha:** a fresh Shape3D spawns at the origin `(0,0,0)` where Camera3D also sits; with the
-  additive default the camera is inside it → whole frame renders white. Move/size it out first.
+  additive default the camera is inside it → whole frame renders white (`fusion_add_node` returns
+  a `note` for Shape3D). Move it out first: `fusion_set_xyz --node Shape3D1 --input_prefix
+  Transform3DOp.Translate --z -8`.
 
 ## LightDirectional (~67) / LightAmbient (~41)
 - Directional: `Intensity` (Number, 1.0); aim with `Transform3DOp.Rotate.X/Y/Z` (shines down local −Z).
@@ -95,7 +104,8 @@ block (bottom).
 - **Clip length is fixed at 5 s and can't be resized via script** (`TimelineItem` has no resize),
   so a longer request (8 s, 16 s, …) can't be done purely in code — author at 120f, or have the
   user drag-extend the generator clip then re-time the keyframes. (Open TODO: `docs/fusion-3d-notes.md` #9.)
-- `grab_frame` returns a JPEG downscaled to `max_width` (default 1280 → 1280×720 for 16:9).
+- `grab_frame` returns a JPEG downscaled to `max_width` (default 1280 → 1280×720 for 16:9);
+  `grab_frames --frames a --frames b …` returns a labeled contact sheet (≤16 frames) for motion review.
 
 ## Adding to this cheatsheet
 When you probe a node/input not listed here (or find a default changed), append it in the same

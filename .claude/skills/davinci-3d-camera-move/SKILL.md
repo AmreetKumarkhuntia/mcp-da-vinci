@@ -48,8 +48,9 @@ the path** to find the frame the camera reaches each element — that anchors al
 
 ## Step 3 — element animation (optional, shared primitives)
 These work in any staging (see `davinci-fusion-3d` for exact ids):
-- **Pop-in**: `Transform3DOp.Scale.X/Y/Z` `[0,1.15,1.0]`, `ease_out`, starting shortly before
-  the camera reaches that element; hold the first key at 0 so it's hidden until its moment.
+- **Pop-in**: `fusion_set_scale3d --node El --scale 1` once to clear ScaleLock, then keyframe
+  `Transform3DOp.Scale.X/Y/Z` `[0,1.15,1.0]`, `ease_out`, starting shortly before the camera
+  reaches that element; hold the first key at 0 so it's hidden until its moment.
 - **Traced path/route line** (only if the staging calls for one): thin `Shape3D` cube rods
   (`SizeLock=0`, `Width/Height` small, `Depth=segment length`) between consecutive points,
   yawed to point along each segment (`Rotate.Y ≈ atan2(ΔX, ΔZ)`; verify sign in a grab).
@@ -58,8 +59,9 @@ These work in any staging (see `davinci-fusion-3d` for exact ids):
 - **Motion blur** comes free from the camera speed (`davinci-fusion-3d`).
 
 ## Step 4 — verify
-Grab the key beats — first reveal, a mid pass/over, each transition, the final hero frame —
-and tune layout, path, timing and lights from the renders.
+Grab the key beats — first reveal, a mid pass/over, each transition, the final hero frame — in
+one round-trip with `grab_frames --frames a --frames b …` (a labeled contact sheet), and tune
+layout, path, timing and lights from the renders.
 
 ## Worked example — ONE staging (corridor fly-through, 4 markers, 120f / 24fps)
 *Illustrative numbers, not defaults — re-derive for the staging and length you actually build.*
@@ -70,6 +72,6 @@ and tune layout, path, timing and lights from the renders.
 - Markers stay full-size after their pop and whoosh past naturally (don't scale them back down).
 
 ## Reminders
-- Default 5 s clip can't be resized via script — for another length the user drag-extends the
-  generator clip, then re-time keyframes proportionally.
+- Default 5 s clip can't be resized via script (open TODO #9) — for another length the user
+  drag-extends the generator clip, then re-time keyframes proportionally.
 - No undo over scripting → throwaway timeline.

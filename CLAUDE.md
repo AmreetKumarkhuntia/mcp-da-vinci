@@ -30,6 +30,8 @@ REPL, slash commands). Windows paths everywhere a file reaches Resolve.
    (motion paths).
 4. Verify numerically: `fusion_sample_input --frames a --frames b ...`.
 5. Verify visually: `grab_frame --frame <timeline_frame>` — you get the rendered image.
+   To judge *motion* across a sequence in one round-trip, `grab_frames --frames a
+   --frames b …` returns a single labeled contact sheet (≤16 frames).
 6. Adjust and repeat.
 
 ## Verified API facts (probed live on Resolve 19.1.3, don't rediscover)
@@ -44,6 +46,11 @@ REPL, slash commands). Windows paths everywhere a file reaches Resolve.
   `StyledTextFollower` (UI "Follower"), `XYPath`, `Path`. `fusion_add_modifier`
   aliases `Perturb`/`Follower` to the right ids. Modifiers appear in
   `fusion_list_nodes` and are addressable by name like any node.
+- `fusion_add_node` aliases friendly light names to registry ids
+  (`DirectionalLight`→`LightDirectional`, plus `AmbientLight`/`PointLight`/`SpotLight`).
+- `fusion_get_node` lists a FuID (combo) input's selectable `options` when Fusion
+  exposes them (e.g. `Renderer3D.RendererType`, `Shape3D.Shape`) — pick from those
+  rather than guessing the FuID string.
 - `SetCurrentTimecode` is rejected on the fusion/media pages (`grab_frame` and
   `set_playhead` know this; `grab_frame` does the page dance itself).
 - `GrabStill` works from any page; `ExportStills` also emits a `.drx` sidecar.
@@ -92,3 +99,6 @@ prefer them over re-probing or re-deriving:
 - `davinci-3d-camera-move` — staging-first camera-move recipe (clarify the staging first).
 - `docs/fusion-3d-notes.md` — known limits + tooling TODOs. Notably: the generator clip is a
   fixed **5 s** and has **no script resize**, so 8 s/16 s requests need a manual drag-extend + re-time.
+- 3D conveniences (prefer over raw setters): `fusion_connect_scene` (next free Merge3D
+  `SceneInput`), `fusion_enable_lighting` / `fusion_enable_motion_blur` (one-shot Renderer3D
+  setup), `fusion_set_xyz` / `fusion_set_scale3d` (clears ScaleLock) / `fusion_set_color`.

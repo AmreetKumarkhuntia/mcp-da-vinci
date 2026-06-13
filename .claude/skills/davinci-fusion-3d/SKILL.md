@@ -35,22 +35,25 @@ and verify with `grab_frame`, never a fixed default. Common stagings:
   common nodes' input ids/defaults is in the **`davinci-fusion-node-reference`** skill — read it
   instead of re-probing (saves tokens); still confirm anything load-bearing (version/font-dependent).
 - **Verify numerically then visually** — `fusion_sample_input` for curves,
-  `grab_frame --frame <timeline_frame>` for the render. `timeline_frame = timeline_start_frame
-  + (comp_frame − global_start)`.
+  `grab_frame --frame <timeline_frame>` for one render, or `grab_frames --frames a --frames b …`
+  for a labeled contact sheet to judge motion-blur/pop timing across a move in one round-trip.
+  `timeline_frame = timeline_start_frame + (comp_frame − global_start)`.
 
 ## Node registry ids (the ones that aren't the UI name)
 - 3D core: `Camera3D`, `Merge3D`, `Renderer3D`, `Text3D`, `Shape3D`.
-- Lights: **`LightDirectional`, `LightAmbient`** (also `LightPoint`, `LightSpot`) —
-  *not* `DirectionalLight`/`AmbientLight`, those fail.
+- Lights: **`LightDirectional`, `LightAmbient`** (also `LightPoint`, `LightSpot`).
+  `fusion_add_node` also accepts the friendly `DirectionalLight`/`AmbientLight`/`PointLight`/
+  `SpotLight` and aliases them to these registry ids.
 
 ## Scene graph & wiring
 ```
 [Camera3D, geometry…, LightDirectional, LightAmbient] → Merge3D → Renderer3D
 Renderer3D → (optionally over a 2D Background via a Merge) → MediaOut1
 ```
-- **Merge3D combines everything**, including the camera and lights. Connect each object to
-  `SceneInput1`, `SceneInput2`, … **strictly in order** — each connect grows the next empty
-  slot, so skipping ahead or connecting in parallel fails.
+- **Merge3D combines everything**, including the camera and lights. Use
+  `fusion_connect_scene --source X --merge3d Merge3D1` for each object — it fills the next free
+  `SceneInput{N}` for you (slots must fill in order; a raw `fusion_connect` to a skipped-ahead
+  slot fails).
 - `Renderer3D` scene input id is `SceneInput`. Its `Camera` auto-selects the one camera in
   the scene.
 - For a backdrop: add a `Background` (set `TopLeftRed/Green/Blue`, default Solid black) and a
@@ -73,26 +76,31 @@ Renderer3D → (optionally over a 2D Background via a Merge) → MediaOut1
 - Default `Camera3D.AoV` ≈ 19.26° horizontal (`AovType=0`). Frame check with `grab_frame`.
 
 ## Make it actually look 3D (lighting)
-`Renderer3D` ships with **`RendererSoftware.LightingEnabled = 0`** → geometry renders flat
-(extrusion invisible). To get depth shading:
-1. `fusion_set_value R3D RendererSoftware.LightingEnabled 1`
-2. Add `LightDirectional` + `LightAmbient`, connect both into Merge3D.
-3. Aim the directional (e.g. `Transform3DOp.Rotate.X ≈ -30`, `.Y ≈ 25`, `Intensity ≈ 0.8`),
-   ambient `Intensity ≈ 0.4` as fill — tune from grabs for the look you want.
+`Renderer3D` ships with **`LightingEnabled = 0`** → geometry renders flat (extrusion
+invisible). To get depth shading:
+1. `fusion_enable_lighting --node R3D` (flips LightingEnabled on whichever renderer slot is
+   active; add `--shadows true` for cast shadows).
+2. Add `LightDirectional` + `LightAmbient`, connect both into Merge3D with `fusion_connect_scene`.
+3. Aim the directional (`fusion_set_xyz --node LightDirectional1 --input_prefix
+   Transform3DOp.Rotate --x -30 --y 25`, `Intensity ≈ 0.8`), ambient `Intensity ≈ 0.4` as
+   fill — tune from grabs for the look you want.
 - **Renderer selection** — `Renderer3D.RendererType` (a FuID, set with `fusion_set_text`) picks
   the renderer: `RendererSoftware` (default; CPU, full motion blur + lighting, reliable when
   grabbing — use for final motion-blur renders) vs `RendererOpenGL` (GPU, fast preview; confirm
   the exact id and that it grabs headless before relying on it). Each renderer has its own
-  `<RendererType>.*` sub-inputs.
+  `<RendererType>.*` sub-inputs. `fusion_get_node --name R3D --filter RendererType` lists the
+  selectable `options`, so read the exact FuIDs from there instead of guessing.
 
 ## Motion blur
-On the `Renderer3D`: `MotionBlur=1`, then `Quality=16` (default 2 is too choppy),
-`ShutterAngle=180`, `SampleSpread=1`. Only shows on moving objects; verify on an animated
+`fusion_enable_motion_blur --node R3D` sets `MotionBlur=1` + `Quality=16` (default 2 is too
+choppy), `ShutterAngle=180`, `SampleSpread=1` in one call (override with `--quality` /
+`--shutter_angle` / `--sample_spread`). Only shows on moving objects; verify on an animated
 frame. Higher `Quality` = slower grabs.
 
 ## Text3D
 - text = `StyledText`; depth = `ExtrusionDepth` (default 0 = flat — set ~0.12); font size =
-  `Size`; fill = `Red1/Green1/Blue1`.
+  `Size`; fill = `Red1/Green1/Blue1` (set all three at once with `fusion_set_color --node Txt
+  --r .. --g .. --b ..`).
 - **Justification inputs are inert via scripting** — text stays left/baseline anchored.
   Center geometrically: px-per-world-unit ≈ `(imgW/2)/(d·tan(AoV/2))`; a 4-digit string at
   `Size 1` ≈ 0.89 world units wide, so set origin `X = center − width/2`, `Y ≈ −0.12`.
@@ -102,12 +110,13 @@ frame. Higher `Quality` = slower grabs.
 - Independent cube dims need `SurfaceCubeInputs.SizeLock = 0`, then
   `SurfaceCubeInputs.Width/Height/Depth`.
 - **Gotcha:** a new Shape3D spawns at `(0,0,0)` where the camera also sits — with the default
-  additive blend the camera ends up *inside* it and the **whole frame renders white**. Move/
-  size it out of the origin immediately after adding it.
+  additive blend the camera ends up *inside* it and the **whole frame renders white**
+  (`fusion_add_node` returns a `note` reminding you). Move it out immediately:
+  `fusion_set_xyz --node Shape3D1 --input_prefix Transform3DOp.Translate --z -8`.
 
 ## Animation primitives (reuse across stagings)
-- Uniform scale "pop": set `Transform3DOp.ScaleLock=0`, then keyframe `Transform3DOp.Scale.X/Y/Z`
-  together to `[0, 1.15, 1.0]` with `ease_out`.
+- Uniform scale "pop": `fusion_set_scale3d --node X --scale 1` once (clears ScaleLock), then
+  keyframe `Transform3DOp.Scale.X/Y/Z` together to `[0, 1.15, 1.0]` with `ease_out`.
 - Camera/object move: keyframe `Transform3DOp.Translate.*` individually; `ease_in_out` for a
   cinematic start/stop, `linear` for constant speed (steadier motion blur).
 - `fusion_set_keyframes` **replaces** all keys on an input and applies one easing across the curve.

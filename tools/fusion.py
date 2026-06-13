@@ -8,6 +8,8 @@ valid input IDs + datatypes for a node so params can be set correctly.
 
 from __future__ import annotations
 
+import re
+
 from resolve.app import mcp
 from resolve.connection import (
     comp_lock,
@@ -20,6 +22,16 @@ from resolve.connection import (
 
 # Datatypes that carry a readable scalar value (others are image/mask connections).
 _SCALAR_TYPES = {"Number", "Text", "FuID", "Point", "Color"}
+
+# Friendly node names -> Fusion registry ids (lights use Light* ids, not UI names).
+_NODE_TYPE_ALIASES = {
+    "DirectionalLight": "LightDirectional",
+    "AmbientLight": "LightAmbient",
+    "PointLight": "LightPoint",
+    "SpotLight": "LightSpot",
+}
+# 3D primitives that spawn at the origin (0,0,0) where Camera3D sits — warn callers.
+_ORIGIN_WARN_TYPES = {"Shape3D"}
 
 
 def _tool_name(tool) -> str:
@@ -44,6 +56,53 @@ def _input_obj(tool, input_id: str):
         f"Node {_tool_name(tool)!r} has no input {input_id!r}. "
         f"Valid IDs (see fusion_get_node): {valid[:40]}{' …' if len(valid) > 40 else ''}"
     )
+
+
+def _inputs_by_suffix(tool, suffix: str) -> list:
+    """Return (input_id, Input) pairs whose INPS_ID is ``suffix`` or ends '.'+suffix.
+
+    Lets the 3D conveniences address ids that may be top-level (``MotionBlur``) or
+    nested under a renderer prefix (``RendererSoftware.LightingEnabled``) without the
+    caller knowing which renderer is active. Exact-id matches sort first.
+    """
+    exact, nested = [], []
+    for inp in (tool.GetInputList() or {}).values():
+        iid = inp.GetAttrs().get("INPS_ID")
+        if iid == suffix:
+            exact.append((iid, inp))
+        elif iid and iid.endswith("." + suffix):
+            nested.append((iid, inp))
+    return exact + nested
+
+
+def _fuid_options(inp) -> list:
+    """Option values of a combo/MultiButton FuID input, from its attr tables.
+
+    Fusion exposes a combo control's choices as attribute tables keyed
+    ``INPIDT_<Control>_ID`` (the option FuIDs) alongside ``INPST_<Control>_String``
+    (human labels). Returns ``[{"id", "label"}]`` when labels are present, else a
+    flat list of ids; empty when the input carries no option table (so callers see
+    no ``options`` key rather than a wrong one).
+    """
+    attrs = inp.GetAttrs() or {}
+    ids = next(
+        (v for k, v in attrs.items()
+         if isinstance(v, dict) and re.fullmatch(r"INPIDT_.+_ID", str(k))),
+        None,
+    )
+    if not ids:
+        return []
+    labels = next(
+        (v for k, v in attrs.items()
+         if isinstance(v, dict) and re.fullmatch(r"INPST_.+_String", str(k))),
+        {},
+    )
+    opts = []
+    for k in sorted(ids, key=lambda x: (isinstance(x, str), x)):
+        oid = to_jsonable(ids[k])
+        lbl = labels.get(k) if isinstance(labels, dict) else None
+        opts.append({"id": oid, "label": to_jsonable(lbl)} if lbl is not None else oid)
+    return opts
 
 
 def _main_input_id(tool) -> str:
@@ -177,8 +236,12 @@ def fusion_add_node(
 ) -> dict:
     """Add a node by its Fusion registry id (e.g. Blur, Merge, Transform, TextPlus).
 
-    Optionally rename it. Returns the node's final name and type.
+    Friendly light names are aliased to their registry ids (DirectionalLight ->
+    LightDirectional, AmbientLight -> LightAmbient, PointLight -> LightPoint,
+    SpotLight -> LightSpot). Optionally rename it. Returns the node's final name
+    and type, plus a ``note`` for 3D primitives that spawn at the origin.
     """
+    node_type = _NODE_TYPE_ALIASES.get(node_type, node_type)
     comp = get_comp(clip_name, comp_index, comp_name, create=True)
     with comp_lock(comp):
         tool = comp.AddTool(node_type)
@@ -189,7 +252,14 @@ def fusion_add_node(
             )
         if name:
             tool.SetAttrs({"TOOLS_Name": name})
-    return {"name": _tool_name(tool), "type": _tool_type(tool)}
+    result = {"name": _tool_name(tool), "type": _tool_type(tool)}
+    if node_type in _ORIGIN_WARN_TYPES:
+        result["note"] = (
+            "Spawns at the origin (0,0,0) where Camera3D also sits; with the "
+            "default additive blend the camera renders inside it (whole frame "
+            "white). Move/scale it out with fusion_set_xyz / fusion_set_scale3d."
+        )
+    return result
 
 
 @mcp.tool()
@@ -206,6 +276,7 @@ def fusion_insert_node(
 
     Defaults splice into the standard MediaIn1 -> MediaOut1 chain.
     """
+    node_type = _NODE_TYPE_ALIASES.get(node_type, node_type)
     comp = get_comp(clip_name, comp_index, comp_name, create=True)
     with comp_lock(comp):
         src = find_fusion_tool(comp, after)
@@ -244,6 +315,48 @@ def fusion_connect(
     with comp_lock(comp):
         dst.ConnectInput(dest_input, src)
     return {"connected": f"{source} -> {dest}.{dest_input}"}
+
+
+@mcp.tool()
+def fusion_connect_scene(
+    source: str,
+    merge3d: str,
+    clip_name: str | None = None,
+    comp_index: int = 1,
+    comp_name: str | None = None,
+) -> dict:
+    """Connect a 3D node into the next free SceneInput slot of a Merge3D.
+
+    Merge3D grows one new SceneInput slot per connection, so slots must be filled
+    in order. This finds the lowest-numbered free ``SceneInput{N}`` and connects
+    ``source`` there — callers don't track slot numbers (and can't race a
+    skip-ahead connect, which Fusion rejects). Connect the camera, lights, and
+    every object this way.
+    """
+    comp = get_comp(clip_name, comp_index, comp_name)
+    src = find_fusion_tool(comp, source)
+    dst = find_fusion_tool(comp, merge3d)
+    slots = []
+    for inp in (dst.GetInputList() or {}).values():
+        m = re.fullmatch(r"SceneInput(\d+)", inp.GetAttrs().get("INPS_ID") or "")
+        if m:
+            slots.append((int(m.group(1)), inp.GetAttrs().get("INPS_ID"), inp))
+    slots.sort()
+    free = next((s for s in slots if s[2].GetConnectedOutput() is None), None)
+    if free is None:
+        raise RuntimeError(
+            f"No free SceneInput on {merge3d!r} — is it a Merge3D? "
+            f"Found slots: {[s[1] for s in slots] or 'none'}."
+        )
+    n, input_id, inp = free
+    with comp_lock(comp):
+        dst.ConnectInput(input_id, src)
+    if inp.GetConnectedOutput() is None:
+        raise RuntimeError(
+            f"ConnectInput({input_id!r}) did not take — confirm {source!r} has a "
+            "3D output and is not already wired elsewhere."
+        )
+    return {"connected": f"{source} -> {merge3d}.{input_id}", "slot": n}
 
 
 @mcp.tool()
@@ -313,6 +426,10 @@ def fusion_get_node(
                 entry["value"] = to_jsonable(tool.GetInput(input_id))
             except Exception:
                 entry["value"] = None
+            if datatype == "FuID":
+                opts = _fuid_options(inp)
+                if opts:
+                    entry["options"] = opts
         else:
             entry["connection"] = True
         try:
@@ -446,6 +563,192 @@ def fusion_set_point(
     _input_obj(tool, input_id)  # validate id -> clear error listing valid ids
     tool.SetInput(input_id, {1: x, 2: y})
     return {"node": node, "input": input_id, "value": [x, y]}
+
+
+@mcp.tool()
+def fusion_set_xyz(
+    node: str,
+    input_prefix: str,
+    x: float | None = None,
+    y: float | None = None,
+    z: float | None = None,
+    clip_name: str | None = None,
+    comp_index: int = 1,
+    comp_name: str | None = None,
+) -> dict:
+    """Set the X/Y/Z parts of a 3D input group in one call (e.g. Transform3DOp.Translate).
+
+    Pass only the axes to change; ``input_prefix`` is the group id without the axis
+    suffix (``Transform3DOp.Translate``, ``Transform3DOp.Rotate``). Saves the
+    three-call dance of setting ``.X``/``.Y``/``.Z`` separately.
+    """
+    if x is None and y is None and z is None:
+        raise ValueError("Pass at least one of x / y / z.")
+    comp = get_comp(clip_name, comp_index, comp_name)
+    tool = find_fusion_tool(comp, node)
+    axes = {"X": x, "Y": y, "Z": z}
+    with comp_lock(comp):
+        for axis, val in axes.items():
+            if val is None:
+                continue
+            input_id = f"{input_prefix}.{axis}"
+            _input_obj(tool, input_id)  # validate -> clear error listing valid ids
+            tool.SetInput(input_id, val)
+    values = {
+        f"{input_prefix}.{axis}": to_jsonable(tool.GetInput(f"{input_prefix}.{axis}"))
+        for axis, val in axes.items()
+        if val is not None
+    }
+    return {"node": node, "values": values}
+
+
+@mcp.tool()
+def fusion_set_scale3d(
+    node: str,
+    scale: float,
+    clip_name: str | None = None,
+    comp_index: int = 1,
+    comp_name: str | None = None,
+) -> dict:
+    """Uniformly scale a 3D node: clears Transform3DOp.ScaleLock, sets Scale X/Y/Z together.
+
+    Works around ScaleLock not propagating reliably under scripting. For an animated
+    pop (e.g. 0 -> 1.15 -> 1.0), call this once to clear the lock, then
+    fusion_set_keyframes each of Transform3DOp.Scale.X/Y/Z with ``ease_out``.
+    """
+    comp = get_comp(clip_name, comp_index, comp_name)
+    tool = find_fusion_tool(comp, node)
+    _input_obj(tool, "Transform3DOp.ScaleLock")  # validate -> "not a 3D node" if absent
+    with comp_lock(comp):
+        tool.SetInput("Transform3DOp.ScaleLock", 0)
+        for axis in ("X", "Y", "Z"):
+            tool.SetInput(f"Transform3DOp.Scale.{axis}", scale)
+    return {"node": node, "scale": scale}
+
+
+@mcp.tool()
+def fusion_set_color(
+    node: str,
+    r: float,
+    g: float,
+    b: float,
+    a: float | None = None,
+    red_id: str = "Red1",
+    clip_name: str | None = None,
+    comp_index: int = 1,
+    comp_name: str | None = None,
+) -> dict:
+    """Set a node's RGB(A) color in one call; green/blue/alpha ids derived from ``red_id``.
+
+    ``red_id`` is the red-channel input (default ``Red1`` for Text3D/TextPlus fill;
+    also ``TopLeftRed`` on Background, or a nested material id). Sibling ids replace
+    the last ``Red`` in it with Green/Blue/Alpha. Alpha is set only when ``a`` is
+    given and the node has the matching alpha input.
+    """
+    if "Red" not in red_id:
+        raise ValueError(f"red_id {red_id!r} must contain 'Red' (e.g. Red1, TopLeftRed).")
+    i = red_id.rfind("Red")
+    green_id = red_id[:i] + "Green" + red_id[i + 3:]
+    blue_id = red_id[:i] + "Blue" + red_id[i + 3:]
+    alpha_id = red_id[:i] + "Alpha" + red_id[i + 3:]
+    comp = get_comp(clip_name, comp_index, comp_name)
+    tool = find_fusion_tool(comp, node)
+    ids = {inp.GetAttrs().get("INPS_ID") for inp in (tool.GetInputList() or {}).values()}
+    for cid in (red_id, green_id, blue_id):
+        if cid not in ids:
+            _input_obj(tool, cid)  # raise the standard "no input" error
+    set_alpha = a is not None
+    if set_alpha and alpha_id not in ids:
+        raise RuntimeError(
+            f"Node {node!r} has no alpha input {alpha_id!r}; omit ``a`` or check red_id."
+        )
+    with comp_lock(comp):
+        tool.SetInput(red_id, r)
+        tool.SetInput(green_id, g)
+        tool.SetInput(blue_id, b)
+        if set_alpha:
+            tool.SetInput(alpha_id, a)
+    values = {red_id: r, green_id: g, blue_id: b}
+    if set_alpha:
+        values[alpha_id] = a
+    return {"node": node, "values": values}
+
+
+# --- 3D conveniences -----------------------------------------------------------
+@mcp.tool()
+def fusion_enable_motion_blur(
+    node: str,
+    quality: int = 16,
+    shutter_angle: float = 180.0,
+    sample_spread: float = 1.0,
+    clip_name: str | None = None,
+    comp_index: int = 1,
+    comp_name: str | None = None,
+) -> dict:
+    """Enable + configure motion blur on a Renderer3D in one call.
+
+    Sets MotionBlur=1 plus Quality (samples; the default 2 is choppy), ShutterAngle,
+    and SampleSpread — no need to know the four split ids. Motion blur only shows on
+    moving geometry.
+    """
+    comp = get_comp(clip_name, comp_index, comp_name)
+    tool = find_fusion_tool(comp, node)
+    wanted = {
+        "MotionBlur": 1,
+        "Quality": quality,
+        "ShutterAngle": shutter_angle,
+        "SampleSpread": sample_spread,
+    }
+    resolved = {}
+    for suffix, val in wanted.items():
+        matches = _inputs_by_suffix(tool, suffix)
+        if not matches:
+            raise RuntimeError(
+                f"Node {node!r} has no {suffix!r} input — is it a Renderer3D? "
+                "(check fusion_get_node --filter)."
+            )
+        resolved[matches[0][0]] = val  # exact match sorts first
+    with comp_lock(comp):
+        for input_id, val in resolved.items():
+            tool.SetInput(input_id, val)
+    return {"node": node, "set": resolved}
+
+
+@mcp.tool()
+def fusion_enable_lighting(
+    node: str,
+    lighting: bool = True,
+    shadows: bool | None = None,
+    clip_name: str | None = None,
+    comp_index: int = 1,
+    comp_name: str | None = None,
+) -> dict:
+    """Enable lighting (and optionally shadows) on a Renderer3D — off by default -> flat look.
+
+    Renderer3D ships with LightingEnabled=0, so extruded Text3D renders flat. Turn
+    it on, then put an actual light in the scene (fusion_add_node DirectionalLight +
+    fusion_connect_scene). Sets every matching renderer slot so it survives a
+    renderer-type switch.
+    """
+    comp = get_comp(clip_name, comp_index, comp_name)
+    tool = find_fusion_tool(comp, node)
+    flags = {"LightingEnabled": lighting}
+    if shadows is not None:
+        flags["ShadowsEnabled"] = shadows
+    resolved = {}
+    for suffix, val in flags.items():
+        matches = _inputs_by_suffix(tool, suffix)
+        if not matches:
+            raise RuntimeError(
+                f"Node {node!r} has no {suffix!r} input — is it a Renderer3D? "
+                "(check fusion_get_node --filter)."
+            )
+        for input_id, _ in matches:
+            resolved[input_id] = bool(val)
+    with comp_lock(comp):
+        for input_id, val in resolved.items():
+            tool.SetInput(input_id, 1 if val else 0)
+    return {"node": node, "set": resolved}
 
 
 @mcp.tool()
