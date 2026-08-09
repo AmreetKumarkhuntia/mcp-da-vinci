@@ -88,6 +88,62 @@ Corrections to earlier assumptions:
   hotkey *does* grant foreground rights when that hotkey fires, which is why
   Ctrl+Shift+M can raise the panel over Resolve.
 
+## The drag bug that cost a day — read this before touching the view
+
+Dragging out of the grid did nothing. Items selected normally, no exception, no
+error, nothing in any log. `startDrag()` was simply never called.
+
+**Cause:** `LibraryModel` did not override `flags()`. `QAbstractListModel`
+returns `Enabled | Selectable` by default — **not `Qt.ItemIsDragEnabled`**. Qt
+only enters `DraggingState` when `selectedDraggableIndexes()` is non-empty, and
+that list filters on exactly that flag. So the view selected fine and silently
+refused to drag.
+
+```python
+def flags(self, index):
+    base = super().flags(index)
+    return base | Qt.ItemIsDragEnabled if index.isValid() else base
+```
+
+**Why the spike didn't catch it:** `scripts/spike_drag.py` drags from a
+`QPushButton` with a hand-built `QDrag` — no item model involved. It proved the
+*mechanism* (Resolve accepts Qt's `CF_HDROP`) but never exercised the *view*.
+A green spike does not mean a green feature; the gap between them was this flag.
+
+**Blind alley:** `setMovement(QListView.Static)` was blamed first and removed.
+It was not the cause. Static is harmless here.
+
+Verified end to end afterwards — real drops into Resolve returned `CopyAction`
+for all three kinds:
+
+```
+CopyAction  ...\Meme Sound Effects\Reeeee sound effect.mp3
+CopyAction  ...\gifs\like.mp4
+CopyAction  ...\gifs\memes\lol.png
+```
+
+### Diagnosing drag problems
+
+`panel/debug.py` logs presses, `startDrag` entry and the `drag.exec` result to
+`%LOCALAPPDATA%\mcp-da-vinci\library\panel-debug.log`. Turn it on by creating an
+empty `debug.on` next to that log, then read the three-line signature:
+
+| Log shows | Meaning |
+|---|---|
+| no `startDrag` line | the *view* never began a drag — model flags, `dragEnabled`, or hit-testing |
+| `startDrag` then `IgnoreAction` | drag works; the drop target refused it |
+| `startDrag` then `CopyAction` | it landed |
+
+**`MEMESFX_DEBUG=1` set from WSL does nothing** — WSL environment variables do
+not cross into Windows processes without `WSLENV`. That is why the marker file
+exists, and it is also the reason the first diagnostic round produced an empty
+log. Same trap applies to shortcuts and the frozen .exe.
+
+A drag can also be tested without touching Resolve: float the window topmost and
+synthesise press/move/release inside its own client area with `SetCursorPos` +
+`mouse_event`. `startDrag` firing with `IgnoreAction` is the expected pass —
+the drop lands on nothing.
+
 ## Gotchas
 
 - **`QtMultimedia` is NOT in `PySide6-Essentials`** (checked on 6.11.1 — it ships
