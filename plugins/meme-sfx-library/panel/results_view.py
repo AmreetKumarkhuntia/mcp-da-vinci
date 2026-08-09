@@ -13,7 +13,7 @@ from PySide6.QtCore import QMimeData
 from PySide6.QtGui import QColor, QDrag, QFont, QFontMetrics, QPainter, QPixmap  # noqa: F401
 from PySide6.QtWidgets import QAbstractItemView, QListView
 
-from . import theme
+from . import debug, theme
 from .delegate import TileDelegate
 from .model import LibraryModel
 
@@ -32,7 +32,7 @@ class ResultsView(QListView):
         self.setFlow(QListView.LeftToRight)
         self.setWrapping(True)
         self.setResizeMode(QListView.Adjust)
-        self.setMovement(QListView.Static)
+        # Movement stays at the default; DragOnly already prevents rearranging.
         self.setSpacing(2)
         # Uniform sizes make laying out thousands of rows O(1); batching keeps
         # the first paint immediate on a big result set.
@@ -80,9 +80,19 @@ class ResultsView(QListView):
             return []
         return model.items_at(self.selectedIndexes())
 
+    def mousePressEvent(self, event) -> None:
+        index = self.indexAt(event.pos())
+        debug.log(
+            f"press at {event.pos().x()},{event.pos().y()} "
+            f"index_valid={index.isValid()} row={index.row()} "
+            f"dragEnabled={self.dragEnabled()} mode={self.dragDropMode()}"
+        )
+        super().mousePressEvent(event)
+
     # --------------------------------------------------------------- drag ---
     def startDrag(self, supportedActions) -> None:
         items = self.selected_items()
+        debug.log(f"startDrag called, {len(items)} item(s) selected")
         if not items:
             return
 
@@ -101,7 +111,8 @@ class ResultsView(QListView):
         # not to interfere with the drag itself.
         window.setWindowOpacity(0.25)
         try:
-            drag.exec(Qt.CopyAction | Qt.LinkAction, Qt.CopyAction)
+            result = drag.exec(Qt.CopyAction | Qt.LinkAction, Qt.CopyAction)
+            debug.log(f"drag.exec returned {result!r} for {items[0].path}")
         finally:
             window.setWindowOpacity(1.0)
         self.dragStarted.emit(len(items))

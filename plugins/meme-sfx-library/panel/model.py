@@ -47,6 +47,20 @@ class LibraryModel(QAbstractListModel):
             self.dataChanged.emit(index, index)
 
     # -------------------------------------------------- QAbstractListModel ---
+    def flags(self, index):
+        """Mark rows draggable.
+
+        Load-bearing, and silent when missing: Qt only enters DraggingState if
+        `selectedDraggableIndexes()` is non-empty, and that filters on
+        Qt.ItemIsDragEnabled. The default flags are Enabled|Selectable, so
+        without this the grid selects normally and simply never starts a drag —
+        `startDrag()` is not called at all, with no error anywhere.
+        """
+        base = super().flags(index)
+        if index.isValid():
+            return base | Qt.ItemIsDragEnabled
+        return base
+
     def rowCount(self, parent=QModelIndex()) -> int:
         return 0 if parent.isValid() else len(self._items)
 
