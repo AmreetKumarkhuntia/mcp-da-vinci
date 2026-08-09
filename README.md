@@ -61,9 +61,14 @@ This machine's verified paths (already baked into `.mcp.json` and as fallbacks i
 
 | | Path |
 |---|---|
-| Resolve DLL | `D:\Program Files\BlackMagic\fusionscript.dll` |
+| Resolve DLL | `D:\Program Files\DaVinci 21\fusionscript.dll` (Resolve 21; `connection.py` discovers it across known locations and registers its folder with `os.add_dll_directory` so sibling DLLs load) |
 | Scripting API root | `C:\ProgramData\Blackmagic Design\DaVinci Resolve\Support\Developer\Scripting` |
 | Windows Python | `E:\Python\python.exe` (a.k.a. `python.exe` from WSL) |
+
+> **Edition caveat:** the v21 build currently installed here is the **free** edition, whose
+> `fusionscript` init fails outright (a `SystemError`, not a `None` handle) — so the
+> connection test below cannot pass until **Resolve Studio 21** is installed/activated. The
+> Python version is *not* a factor (the DLL loads fine under Python 3.11–3.13).
 
 ## Verify
 

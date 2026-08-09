@@ -1,20 +1,25 @@
-"""Text-based / assembly editing: transcribe, read the cut, rebuild from segments.
+"""Timeline editing: split takes, drop the bad ones, transcribe, assemble rough cuts.
 
-Resolve's scripting API cannot trim, blade, slip or move a clip that is already
-on the timeline (TimelineItem exposes only Get* for source/record ranges — no
-resize). So "editing" here is **assembly**: read the timeline's edit decisions
-(each clip's source in/out + position), or transcribe the audio, decide which
-ranges to keep, then *rebuild* the kept segments into a fresh timeline via
-MediaPool.AppendToTimeline (which accepts per-clip in/out + record position).
+DaVinci Resolve 21 added the editing primitives this module needs natively:
+- ``Timeline.DetectSceneCuts()`` splits one continuous recording into separate clips.
+- ``Timeline.DeleteClips(items, ripple)`` removes clips and (with ripple) closes the gap.
+- ``TimelineItem.SetClipEnabled(bool)`` mutes a take without deleting it.
+So the "keep the good takes, drop the flubs" loop is native: ``detect_scene_cuts`` ->
+``get_timeline_edl`` / ``transcribe_timeline`` + ``get_transcript`` to decide which clips
+are bad -> ``delete_timeline_clips(ripple=True)``.
 
-This is the backbone for transcript-driven rough cuts ("keep the good takes,
-drop the flubs"): transcribe_timeline -> get_transcript -> pick keep-ranges ->
-build_timeline_from_segments. Rebuilding drops per-clip grades/Fusion/transitions
-(clipInfo can't carry them) — it is a rough-cut tool, not a finishing tool.
+What v21 still lacks is an in-place blade/trim/slip setter for an arbitrary frame
+(``TimelineItem`` exposes only ``Get*`` for its source/record ranges). To cut a bad span
+out of the *middle* of one unbroken take you therefore still rebuild the kept ranges into
+a fresh timeline with ``build_timeline_from_segments`` (which sets per-clip in/out via
+``MediaPool.AppendToTimeline``). Rebuilding drops per-clip grades/Fusion/transitions, so
+it stays a rough-cut tool, not a finishing tool.
 
-NOTE: transcribe_timeline needs DaVinci Resolve Studio with the speech-to-text
-model installed. These tools are dependency-free (Resolve-native) but the
-end-to-end loop has not been exercised against real footage yet.
+ALL of these require Resolve **Studio** 21+: external scripting itself, plus
+``DetectSceneCuts``, ``DeleteClips`` and ``CreateSubtitlesFromAudio``. The free edition
+can't even open the scripting bridge (its fusionscript init fails). ``get_transcript``'s
+caption-text accessor (``item.GetName()``) is still unverified against live captions —
+confirm it once a Studio 21 connection is available.
 """
 
 from __future__ import annotations
@@ -23,23 +28,80 @@ from resolve.app import mcp
 from resolve.connection import (
     find_clips_by_name,
     frame_to_timecode,
-    get_current_project,
     get_current_timeline,
     get_media_pool,
+    get_resolve,
 )
 
 
+def _select_track_items(timeline, track, names, indices):
+    """Resolve TimelineItems on a video track by name and/or 1-based position.
+
+    Returns the matching items in track order; with neither ``names`` nor ``indices``
+    returns every item on the track. Raises when a selector matches nothing so a
+    cut/mute never silently hits the wrong set.
+    """
+    items = timeline.GetItemListInTrack("video", track) or []
+    if not names and not indices:
+        return list(items)
+    wanted_names = set(names or [])
+    wanted_idx = {int(i) for i in (indices or [])}  # CLI/MCP may pass these as strings
+    chosen, seen = [], set()
+    matched_names, matched_idx = set(), set()
+    for pos, item in enumerate(items, start=1):
+        nm = item.GetName()
+        if pos not in wanted_idx and nm not in wanted_names:
+            continue
+        if id(item) not in seen:
+            chosen.append(item)
+            seen.add(id(item))
+        if pos in wanted_idx:
+            matched_idx.add(pos)
+        if nm in wanted_names:
+            matched_names.add(nm)
+    missing_names = wanted_names - matched_names
+    missing_idx = wanted_idx - matched_idx
+    if missing_names or missing_idx:
+        raise RuntimeError(
+            f"No clips on video track {track} matched names={sorted(missing_names)} "
+            f"indices={sorted(missing_idx)}. Track has {len(items)} clip(s): "
+            f"{[it.GetName() for it in items]}."
+        )
+    return chosen
+
+
 @mcp.tool()
-def transcribe_timeline() -> dict:
+def transcribe_timeline(language: str | None = None) -> dict:
     """Transcribe the current timeline's audio into a subtitle/caption track.
 
-    Wraps Timeline.CreateSubtitlesFromAudio — requires Resolve **Studio** with the
-    speech-to-text language model downloaded, and audio on the timeline. The
-    resulting captions are read back (with timecodes) by get_transcript. Can take
-    a while on long timelines.
+    Wraps Timeline.CreateSubtitlesFromAudio — requires Resolve **Studio** 21+ with the
+    speech-to-text language model downloaded, and audio on the timeline. The resulting
+    captions are read back (with timecodes) by get_transcript. Can take a while on long
+    timelines.
+
+    ``language`` is an optional auto-caption language name (e.g. "english", "auto",
+    "korean"); it maps to the resolve.AUTO_CAPTION_* constant and is passed through the
+    autoCaptionSettings dict. Omit it to let Resolve auto-detect the language.
     """
     timeline = get_current_timeline()
-    if not timeline.CreateSubtitlesFromAudio():
+    settings = {}
+    if language:
+        resolve = get_resolve()
+        key = getattr(resolve, "SUBTITLE_LANGUAGE", None)
+        value = getattr(resolve, f"AUTO_CAPTION_{language.strip().upper()}", None)
+        if key is None or value is None:
+            raise ValueError(
+                f"Unknown caption language {language!r}. Expected an auto-caption name "
+                "like 'english', 'auto' or 'korean' (maps to resolve.AUTO_CAPTION_*); "
+                "requires Resolve Studio 21+."
+            )
+        settings[key] = value
+    ok = (
+        timeline.CreateSubtitlesFromAudio(settings)
+        if settings
+        else timeline.CreateSubtitlesFromAudio()
+    )
+    if not ok:
         raise RuntimeError(
             "CreateSubtitlesFromAudio failed. Checklist: (1) this is Resolve "
             "Studio; (2) the speech-to-text model is installed (Resolve > "
@@ -115,6 +177,96 @@ def get_timeline_edl() -> dict:
                 }
             )
     return {"timeline": timeline.GetName(), "count": len(clips), "clips": clips}
+
+
+@mcp.tool()
+def detect_scene_cuts() -> dict:
+    """Auto-detect cut points and split the current timeline into separate clips.
+
+    Wraps Timeline.DetectSceneCuts() (Resolve **Studio** 21+). Use it to break one
+    continuous recording — e.g. several takes recorded back-to-back — into individual
+    clips you can then drop with delete_timeline_clips. It finds hard cuts / scene
+    changes; it won't find boundaries inside a single unbroken take. Reports the
+    video-track-1 clip count before and after so you can see how many pieces it made.
+    """
+    timeline = get_current_timeline()
+    before = len(timeline.GetItemListInTrack("video", 1) or [])
+    if not timeline.DetectSceneCuts():
+        raise RuntimeError(
+            "DetectSceneCuts failed. Needs Resolve Studio 21+ and a timeline with "
+            "detectable cuts on its media."
+        )
+    after = len(timeline.GetItemListInTrack("video", 1) or [])
+    return {
+        "timeline": timeline.GetName(),
+        "track1_clips_before": before,
+        "track1_clips_after": after,
+    }
+
+
+@mcp.tool()
+def delete_timeline_clips(
+    track: int = 1,
+    names: list[str] | None = None,
+    indices: list[int] | None = None,
+    ripple: bool = True,
+) -> dict:
+    """Delete clips from the current timeline — the "drop the bad takes" primitive.
+
+    Selects clips on video ``track`` by ``names`` and/or 1-based ``indices`` (position
+    within the track), then removes them with Timeline.DeleteClips. ``ripple=True``
+    (default) closes the gap so later clips shift left; ``ripple=False`` leaves a gap.
+    Pass neither names nor indices to clear the whole track.
+
+    DESTRUCTIVE and IN-PLACE — there is no undo over scripting. Prototype on a throwaway
+    timeline (create_timeline) before touching real work. Requires Resolve **Studio** 21+.
+    """
+    timeline = get_current_timeline()
+    items = _select_track_items(timeline, track, names, indices)
+    before = len(timeline.GetItemListInTrack("video", track) or [])
+    if not timeline.DeleteClips(items, ripple):
+        raise RuntimeError(
+            "DeleteClips failed (needs Resolve Studio 21+). Ensure the track isn't "
+            "locked and the selected items are valid."
+        )
+    after = len(timeline.GetItemListInTrack("video", track) or [])
+    return {
+        "timeline": timeline.GetName(),
+        "track": track,
+        "deleted": len(items),
+        "ripple": ripple,
+        "clips_before": before,
+        "clips_after": after,
+    }
+
+
+@mcp.tool()
+def set_clip_enabled(
+    enabled: bool,
+    track: int = 1,
+    names: list[str] | None = None,
+    indices: list[int] | None = None,
+) -> dict:
+    """Enable or disable (mute) timeline clips without deleting them.
+
+    The reversible alternative to delete_timeline_clips: SetClipEnabled(False) makes a
+    take inert (no output) while leaving it on the timeline, so keep/drop decisions can
+    be auditioned and undone. Selects clips on video ``track`` by ``names`` and/or
+    1-based ``indices`` (all clips on the track if neither is given). Requires Resolve
+    **Studio** 21+.
+    """
+    timeline = get_current_timeline()
+    items = _select_track_items(timeline, track, names, indices)
+    failed = [it.GetName() for it in items if not it.SetClipEnabled(enabled)]
+    if failed:
+        raise RuntimeError(f"SetClipEnabled({enabled}) failed for: {failed}")
+    return {
+        "timeline": timeline.GetName(),
+        "track": track,
+        "enabled": enabled,
+        "count": len(items),
+        "clips": [it.GetName() for it in items],
+    }
 
 
 @mcp.tool()

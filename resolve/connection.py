@@ -25,19 +25,47 @@ import sys
 _DEFAULT_SCRIPT_API = (
     r"C:\ProgramData\Blackmagic Design\DaVinci Resolve\Support\Developer\Scripting"
 )
-_DEFAULT_SCRIPT_LIB = r"D:\Program Files\BlackMagic\fusionscript.dll"
+# fusionscript.dll moved with the DaVinci Resolve 21 install (it now lives under
+# "D:\Program Files\DaVinci 21"); the pre-21 BlackMagic path is kept last as a fallback.
+# First existing candidate wins, and an explicit RESOLVE_SCRIPT_LIB always takes precedence.
+_SCRIPT_LIB_CANDIDATES = (
+    r"D:\Program Files\DaVinci 21\fusionscript.dll",
+    r"C:\Program Files\Blackmagic Design\DaVinci Resolve\fusionscript.dll",
+    r"D:\Program Files\BlackMagic\fusionscript.dll",
+)
 
 _resolve = None  # cached Resolve handle
+
+
+def _resolve_script_lib() -> str:
+    """Pick the fusionscript DLL: env override, else the first candidate that exists."""
+    lib = os.environ.get("RESOLVE_SCRIPT_LIB")
+    if lib:
+        return lib
+    for candidate in _SCRIPT_LIB_CANDIDATES:
+        if os.path.exists(candidate):
+            return candidate
+    # Nothing found; return the newest known location so the error names a real install.
+    return _SCRIPT_LIB_CANDIDATES[0]
 
 
 def _apply_env_fallbacks() -> None:
     """Populate the env vars / sys.path Resolve's module expects, if missing."""
     os.environ.setdefault("RESOLVE_SCRIPT_API", _DEFAULT_SCRIPT_API)
-    os.environ.setdefault("RESOLVE_SCRIPT_LIB", _DEFAULT_SCRIPT_LIB)
+    os.environ.setdefault("RESOLVE_SCRIPT_LIB", _resolve_script_lib())
 
     modules_dir = os.path.join(os.environ["RESOLVE_SCRIPT_API"], "Modules")
     if modules_dir not in sys.path:
         sys.path.append(modules_dir)
+
+    # fusionscript.dll loads sibling DLLs (Qt5, etc.) from its own install folder. Since
+    # Python 3.8 that folder must be registered explicitly, or the import fails with
+    # "DLL load failed while importing fusionscript: The specified module could not be
+    # found". Harmless to call more than once.
+    lib_dir = os.path.dirname(os.environ["RESOLVE_SCRIPT_LIB"])
+    if lib_dir and os.path.isdir(lib_dir) and hasattr(os, "add_dll_directory"):
+        with contextlib.suppress(OSError):
+            os.add_dll_directory(lib_dir)
 
 
 def _import_dvr_script():
@@ -75,7 +103,24 @@ def get_resolve(refresh: bool = False):
         return _resolve
 
     _apply_env_fallbacks()
-    dvr = _import_dvr_script()
+    try:
+        dvr = _import_dvr_script()
+    except Exception as exc:  # native DLL: ImportError / SystemError / OSError
+        lib = os.environ.get("RESOLVE_SCRIPT_LIB")
+        raise RuntimeError(
+            f"Failed to load Resolve's fusionscript module "
+            f"({type(exc).__name__}: {exc}). RESOLVE_SCRIPT_LIB={lib!r}. Most likely "
+            "cause: external scripting requires DaVinci Resolve **Studio** — the free "
+            "edition makes fusionscript's init fail outright (a SystemError here, not a "
+            "None handle), so verify the running build is Studio (Help > About; the "
+            "free edition registers as 'DaVinci Resolve', Studio as 'DaVinci Resolve "
+            "Studio'). Also check: (1) RESOLVE_SCRIPT_LIB points at the installed "
+            r"fusionscript.dll (a v21 install may put it at 'D:\Program Files\DaVinci "
+            r"21\fusionscript.dll'); (2) Preferences > System > General > 'External "
+            "scripting using' is set to Local; (3) run with Windows python.exe, not a "
+            "WSL interpreter. (The DLL is ABI-compatible across Python 3.11–3.13, so the "
+            "interpreter version is not the cause.)"
+        ) from exc
     resolve = dvr.scriptapp("Resolve")
     if resolve is None:
         raise RuntimeError(

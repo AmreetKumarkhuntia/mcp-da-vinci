@@ -58,6 +58,21 @@ REPL, slash commands). Windows paths everywhere a file reaches Resolve.
   Merge opacity = `Blend`; TextPlus text = `StyledText`, size = `Size`, color =
   `Red1`/`Green1`/`Blue1`/`Alpha1`.
 
+## Timeline editing & cuts (Resolve 21 Studio)
+
+`tools/editing.py` does assembly/cut editing, not just Fusion. Resolve **21** added the
+native primitives (all **Studio**-only): `detect_scene_cuts` splits one continuous
+recording into per-take clips; `delete_timeline_clips --indices N --ripple true` drops
+clips and closes the gap (DESTRUCTIVE — no undo, prototype on a throwaway timeline);
+`set_clip_enabled` mutes a take reversibly; read the current cut with `get_timeline_edl`.
+Transcript-driven rough cut: `transcribe_timeline` → `get_transcript` → pick bad clips →
+`delete_timeline_clips`. There is still **no** in-place blade/trim/slip at an arbitrary
+frame, so cutting a bad span out of the *middle* of one take uses
+`build_timeline_from_segments` (rebuild the kept ranges). The DLL moved to
+`D:\Program Files\DaVinci 21\fusionscript.dll`; `connection.py` auto-discovers it and
+`os.add_dll_directory`s its folder. The **free** edition can't script at all — its
+fusionscript init fails (SystemError); only Studio works (Python version is irrelevant).
+
 ## Recipes (all primitives verified)
 
 - **Blank canvas**: `insert_fusion_composition` on an empty timeline spot → a 5s
