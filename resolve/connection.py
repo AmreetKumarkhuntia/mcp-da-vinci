@@ -109,26 +109,28 @@ def get_resolve(refresh: bool = False):
         lib = os.environ.get("RESOLVE_SCRIPT_LIB")
         raise RuntimeError(
             f"Failed to load Resolve's fusionscript module "
-            f"({type(exc).__name__}: {exc}). RESOLVE_SCRIPT_LIB={lib!r}. Most likely "
-            "cause: external scripting requires DaVinci Resolve **Studio** — the free "
-            "edition makes fusionscript's init fail outright (a SystemError here, not a "
-            "None handle), so verify the running build is Studio (Help > About; the "
-            "free edition registers as 'DaVinci Resolve', Studio as 'DaVinci Resolve "
-            "Studio'). Also check: (1) RESOLVE_SCRIPT_LIB points at the installed "
-            r"fusionscript.dll (a v21 install may put it at 'D:\Program Files\DaVinci "
-            r"21\fusionscript.dll'); (2) Preferences > System > General > 'External "
-            "scripting using' is set to Local; (3) run with Windows python.exe, not a "
-            "WSL interpreter. (The DLL is ABI-compatible across Python 3.11–3.13, so the "
-            "interpreter version is not the cause.)"
+            f"({type(exc).__name__}: {exc}). RESOLVE_SCRIPT_LIB={lib!r}, "
+            f"sys.executable={sys.executable!r}. This is an *import* failure, which on "
+            "this machine has always meant the interpreter, NOT the Resolve edition: "
+            r"E:\Python 3.12.8, Blender's 3.13.9 and UE 5.8's 3.11.8 all raise SystemError "
+            "against the same DLL that the MS Store python3.13.exe (3.13.14) imports "
+            "cleanly. Try a different Windows python.exe first. Then check: (1) "
+            r"RESOLVE_SCRIPT_LIB points at the installed fusionscript.dll ('D:\Program "
+            r"Files\DaVinci 21\fusionscript.dll' for a v21 install); (2) it is a Windows "
+            "python.exe, not a WSL interpreter. An edition problem looks different — the "
+            "import succeeds and scriptapp() returns None."
         ) from exc
     resolve = dvr.scriptapp("Resolve")
     if resolve is None:
         raise RuntimeError(
-            "Could not connect to DaVinci Resolve. Checklist: "
+            "fusionscript loaded, but scriptapp('Resolve') returned None — Resolve did not "
+            "hand out an application object. Checklist, in this order: "
             "(1) Resolve is running; "
-            "(2) Preferences > System > General > 'External scripting using' is set to 'Local'; "
-            "(3) external scripting requires DaVinci Resolve Studio (not the free edition); "
-            "(4) this server is run by Windows Python so it can load fusionscript.dll."
+            "(2) Preferences > System > General > 'External scripting using' is set to "
+            "'Local', and Resolve was restarted afterwards; "
+            "(3) external scripting requires DaVinci Resolve Studio. The free edition still "
+            "scripts fine from inside Resolve (Workspace > Scripts, Fusion Console) — it "
+            "just won't answer an outside process, which is what this server is."
         )
     _resolve = resolve
     return _resolve

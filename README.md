@@ -52,8 +52,10 @@ mcp-da-vinci/
 2. In Resolve: **Preferences → System → General → External scripting using → `Local`**,
    then restart Resolve.
 3. Resolve must be **running** for any tool call to work.
-4. External scripting requires **DaVinci Resolve Studio** (the free edition only allows
-   scripting from the Fusion console). If the connection test below fails on the free
+4. External scripting — which is what this server does — requires **DaVinci Resolve Studio**.
+   The free edition still scripts happily *from inside Resolve* (`Workspace > Scripts`, the
+   Fusion Console), where the host injects `resolve` and `project`; it just won't hand an
+   application object to an outside process. If the connection test below fails on the free
    edition, this is why.
 
 This machine's verified paths (already baked into `.mcp.json` and as fallbacks in
@@ -65,10 +67,18 @@ This machine's verified paths (already baked into `.mcp.json` and as fallbacks i
 | Scripting API root | `C:\ProgramData\Blackmagic Design\DaVinci Resolve\Support\Developer\Scripting` |
 | Windows Python | `E:\Python\python.exe` (a.k.a. `python.exe` from WSL) |
 
-> **Edition caveat:** the v21 build currently installed here is the **free** edition, whose
-> `fusionscript` init fails outright (a `SystemError`, not a `None` handle) — so the
-> connection test below cannot pass until **Resolve Studio 21** is installed/activated. The
-> Python version is *not* a factor (the DLL loads fine under Python 3.11–3.13).
+> **Edition caveat:** the v21 build installed here is the **free** edition, so the connection
+> test below is not expected to pass until **Resolve Studio 21** is installed/activated.
+>
+> Two failure modes get confused here; they are different problems.
+>
+> - `SystemError: initialization of fusionscript failed` is **the interpreter, not the
+>   edition.** Probed live: `E:\Python` 3.12.8, Blender's 3.13.9 and UE 5.8's 3.11.8 all fail;
+>   the MS Store `python3.13.exe` (3.13.14) imports the same DLL cleanly. The root cause of
+>   the difference is unknown and wasn't worth chasing — just use an interpreter that works.
+> - `scriptapp("Resolve")` returning `None` is the real edition/permission signal. Set
+>   `External scripting using` → `Local` and restart before blaming the edition; that pref
+>   has not been ruled out on this machine.
 
 ## Verify
 

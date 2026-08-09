@@ -58,10 +58,11 @@ REPL, slash commands). Windows paths everywhere a file reaches Resolve.
   Merge opacity = `Blend`; TextPlus text = `StyledText`, size = `Size`, color =
   `Red1`/`Green1`/`Blue1`/`Alpha1`.
 
-## Timeline editing & cuts (Resolve 21 Studio)
+## Timeline editing & cuts (Resolve 21)
 
 `tools/editing.py` does assembly/cut editing, not just Fusion. Resolve **21** added the
-native primitives (all **Studio**-only): `detect_scene_cuts` splits one continuous
+native primitives (reachable only over *external* scripting, so Studio in
+practice — see Editions below): `detect_scene_cuts` splits one continuous
 recording into per-take clips; `delete_timeline_clips --indices N --ripple true` drops
 clips and closes the gap (DESTRUCTIVE — no undo, prototype on a throwaway timeline);
 `set_clip_enabled` mutes a take reversibly; read the current cut with `get_timeline_edl`.
@@ -70,8 +71,40 @@ Transcript-driven rough cut: `transcribe_timeline` → `get_transcript` → pick
 frame, so cutting a bad span out of the *middle* of one take uses
 `build_timeline_from_segments` (rebuild the kept ranges). The DLL moved to
 `D:\Program Files\DaVinci 21\fusionscript.dll`; `connection.py` auto-discovers it and
-`os.add_dll_directory`s its folder. The **free** edition can't script at all — its
-fusionscript init fails (SystemError); only Studio works (Python version is irrelevant).
+`os.add_dll_directory`s its folder.
+
+## Editions: what the free build can and cannot do
+
+Earlier notes here said the free edition "can't script at all". That is wrong and it blocked
+work for a while. The real split:
+
+| | Free | How |
+|---|---|---|
+| **Internal** scripting — `Workspace > Scripts`, Fusion Console | ✅ works | The host injects `resolve` / `project`; no DLL import, no permission needed |
+| **External** scripting — `fusionscript.scriptapp("Resolve")`, i.e. this MCP server | ❌ | Returns `None` from an outside process |
+
+Resolve's own API reference is explicit (`…\Developer\Scripting\README.txt`, "Studio and AI
+Scripting APIs"): *"The DaVinci Resolve scripting APIs cover a common superset of functions
+for both the Free and Studio versions."* Only named functions are Studio-gated
+(`CreateSubtitlesFromAudio`, `TranscribeAudio`, IntelliSearch, `GenerateSpeech`), and some of
+those additionally need an Extras download.
+
+`SystemError: initialization of fusionscript failed` is **interpreter-specific, not
+edition-specific** — probed live on this machine:
+
+| Interpreter | `import fusionscript` |
+|---|---|
+| `E:\Python\python.exe` 3.12.8 | ✗ SystemError |
+| Blender's 3.13.9, UE 5.8's 3.11.8 | ✗ SystemError |
+| MS Store `python3.13.exe` 3.13.14 | ✓ imports clean |
+
+Under the working import, `scriptapp("Resolve")` returns `None`. Two candidate causes remain
+unseparated: the free edition, and `Preferences > System > General > External scripting
+using` not being set to `Local`. Flip the pref and re-test before concluding it's the edition.
+
+**Practical upshot for anything new:** if it must work on free, put it behind an internal
+script (`…\AppData\Roaming\Blackmagic Design\DaVinci Resolve\Support\Fusion\Scripts\Utility\`,
+which lands in `Workspace > Scripts`), not behind this MCP server.
 
 ## Recipes (all primitives verified)
 

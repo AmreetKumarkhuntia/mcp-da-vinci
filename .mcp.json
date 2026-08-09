@@ -7,7 +7,7 @@
       ],
       "env": {
         "RESOLVE_SCRIPT_API": "C:\\ProgramData\\Blackmagic Design\\DaVinci Resolve\\Support\\Developer\\Scripting",
-        "RESOLVE_SCRIPT_LIB": "D:\\Program Files\\BlackMagic\\fusionscript.dll",
+        "RESOLVE_SCRIPT_LIB": "D:\\Program Files\\DaVinci 21\\fusionscript.dll",
         "PYTHONPATH": "C:\\ProgramData\\Blackmagic Design\\DaVinci Resolve\\Support\\Developer\\Scripting\\Modules"
       }
     }
