@@ -120,19 +120,53 @@ The index and thumbnail cache live in
 move or reinstall the plugin without losing anything. Delete that folder to
 start clean.
 
-## Build a standalone .exe
+## Distributing it — installer with uninstall
 
-To hand this to someone who has no Python at all:
+```
+python.exe scripts/build_installer.py
+```
+
+Produces **one file**, `MemeSFXLibrary-Setup-1.0.0.exe` (~77 MB), under
+`%LOCALAPPDATA%\mcp-da-vinci\build\installer\`. Send that to anyone. It:
+
+- installs **per-user, with no admin rights** (into `%LOCALAPPDATA%\Programs`)
+- creates Start Menu and optional Desktop shortcuts
+- registers properly in **Settings → Apps → Installed apps**, so it uninstalls
+  like any other program
+- needs **no Python** on the target machine
+
+Needs Inno Setup once on the *build* machine:
+`winget install JRSoftware.InnoSetup`. Use `--skip-app` to recompile just the
+installer from the last app build (~40 s instead of ~5 min).
+
+Silent install / uninstall, for scripted deployment:
+
+```
+MemeSFXLibrary-Setup-1.0.0.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART
+"%LOCALAPPDATA%\Programs\MemeSFXLibrary\unins000.exe" /VERYSILENT
+```
+
+**Uninstalling never touches your library data unless you say so.** An
+interactive uninstall asks whether to also delete the index, thumbnails,
+favourites and tags in `%LOCALAPPDATA%\mcp-da-vinci\library\`, defaulting to
+keeping them. A *silent* uninstall always keeps them — `/SUPPRESSMSGBOXES`
+answers prompts with Yes regardless of the declared default, so the script skips
+the question entirely rather than risk deleting data unattended.
+
+### Just the app folder, no installer
 
 ```
 python.exe scripts/build_exe.py
 ```
 
-Produces a one-folder app (~250 MB, almost all of it Qt) under
-`%LOCALAPPDATA%\mcp-da-vinci\build\dist\MemeSFXLibrary\`. Zip that folder, send
-it, they double-click `MemeSFXLibrary.exe`. Add `--onefile` for a single
-executable instead (starts slower — it unpacks itself each run), or
-`--outdir D:\somewhere` to build elsewhere.
+A one-folder app (~245 MB) under `%LOCALAPPDATA%\mcp-da-vinci\build\dist\`. Zip
+and send; they double-click `MemeSFXLibrary.exe`. `--onefile` makes a single
+executable (slower to start — it unpacks each run), `--outdir` builds elsewhere.
+
+> Not a DLL, deliberately. A DLL is loaded *by* a host process and cannot be
+> launched or installed on its own; there is no host here. Resolve's only
+> DLL-shaped plugins are OFX effects, which process frames and cannot draw a
+> browser UI.
 
 ## Command line
 
@@ -155,12 +189,15 @@ meme-sfx-library/
 ├── install.bat            one-time setup: deps + icon + shortcuts
 ├── run_panel.bat          double-click to launch
 ├── requirements.txt
+├── installer/
+│   └── MemeSFXLibrary.iss Inno Setup script -> Setup.exe with uninstaller
 ├── medialib/              core: scan, index, search, thumbnails  (no Qt)
 ├── panel/                 the PySide6 window
 ├── scripts/
 │   ├── make_icon.py       draws panel/icon.ico
 │   ├── install_shortcut.py  Desktop + Start Menu (--remove to undo)
 │   ├── build_exe.py       standalone .exe via PyInstaller
+│   ├── build_installer.py distributable Setup.exe via Inno Setup
 │   └── spike_drag.py      drag-into-Resolve regression harness
 └── NOTES.md               measurements, gotchas, TODOs
 ```
