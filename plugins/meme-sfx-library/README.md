@@ -1,0 +1,178 @@
+# Meme & SFX Library
+
+A searchable browser for your meme clips, green screens, sound effects and
+overlays — that **drags straight into DaVinci Resolve**.
+
+Everything it needs is in this one folder. It is standalone: it does not import
+the MCP server, and it does **not** need DaVinci Resolve Studio. It works on the
+free edition, because it talks to Resolve the same way Windows Explorer does.
+
+---
+
+## Install
+
+Double-click **`install.bat`**.
+
+It finds your Python, installs the dependencies (~250 MB of Qt the first time),
+draws the app icon, and puts a shortcut on your Desktop and in the Start Menu.
+
+If you'd rather do it by hand:
+
+```
+python.exe -m pip install -r requirements.txt
+python.exe scripts/make_icon.py
+python.exe scripts/install_shortcut.py
+```
+
+Needs **Python 3.10+** on Windows. (This repo's Resolve tooling runs under
+Windows Python at `E:\Python\python.exe`; the panel uses the same one.)
+
+## Run
+
+Any of these:
+
+- the **Desktop / Start Menu shortcut** created by the installer
+- double-click **`run_panel.bat`**
+- `python.exe -m panel` from this folder
+
+First launch asks you to pick folders. Point it at anything — memes, SFX packs,
+green screens, overlays, gifs, thumbnails. Sub-folders are included and their
+names become searchable tags automatically, so a file in
+`SFX Pack\Alarm & Chime\` is findable by typing `alarm` or `chime`.
+
+## Getting things into Resolve
+
+**Drag the tile out of the panel and drop it where you want it.** That's it.
+
+| Drop it on | What happens |
+|---|---|
+| the **Media Pool** | the file is imported as a clip — the reliable path |
+| the **timeline** | it lands as a clip at the drop point |
+| an **audio track** | drop sound effects straight onto A1/A2 |
+
+Select several tiles with Ctrl or Shift and drag them all at once. The panel
+fades to 25% while you drag so you can see what you're aiming at.
+
+There is no Resolve API involved — the panel puts a normal Windows file drag
+(`CF_HDROP`) on the clipboard, byte-for-byte what Explorer produces. That is why
+it works without Studio, and it is the same trick the commercial panels (SNS
+ShareBrowser, Sony Ci) use. Verified with `scripts/spike_drag.py`, which stays
+here as the regression harness: if a Resolve update ever breaks dragging, run it
+and you'll know in ten seconds whether it's Resolve or the panel.
+
+**Tip:** keep the panel always-on-top (the 📌 button) beside Resolve, or leave it
+minimised and summon it with **Ctrl+Shift+M**, type, drag, and it gets out of
+the way.
+
+## Keys
+
+| Key | Action |
+|---|---|
+| type anything | live search |
+| `↑ ↓ ← →` | move through results — sounds auto-play as you go |
+| `Space` | play / stop the selected item |
+| `F` | favourite |
+| `Ctrl+1..4` | All / Video / Audio / Image |
+| `Ctrl+F` | jump to the search box |
+| `Ctrl+C` | copy the file path |
+| `Ctrl+R` | rescan folders |
+| `Esc` | clear the search, or minimise |
+| `Ctrl+Shift+M` | summon the panel over Resolve from anywhere |
+
+Buttons: **★** favourites only · **🔊** auto-play on/off · **▤** compact mode ·
+**📌** always on top · **＋** folders · **⟳** rescan.
+
+## Search
+
+Filenames in a real SFX pack are hostile to plain matching, so every name is
+normalised first:
+
+| On disk | Searchable as |
+|---|---|
+| `WaterPourChalice_S011WR.87.mp3` | `water pour chalice` |
+| `MMFX_CHIME BRIGHT PERCUSSIVE_SB01.174.mp3` | `chime bright percussive` |
+| `Ah Shit Here We Go Again - GTA Sound Effect (HD) ( 160kbps ).mp3` | `ah shit here we go again gta` |
+| `yt1s.com - Best Rage Of The Day  Episode 11_1080p.mp4` | `best rage of the day episode 11` |
+
+Vendor serials, ripper-site tags, bitrate/resolution noise and glued CamelCase
+all get stripped, so typing what you actually mean finds the file.
+
+**Aliases** let you name things the way you think of them. Edit
+`%LOCALAPPDATA%\mcp-da-vinci\library\tags.json`:
+
+```json
+{
+  "aliases": { "vine boom": ["bass boost", "bruh"] },
+  "path_tags": { "D:\\videos\\meme\\Green Screen": ["greenscreen", "chroma"] },
+  "hide": ["*.sfk", "*.url", "desktop.ini"]
+}
+```
+
+Now typing `bruh` finds `Bass Boost.mp3`.
+
+## Folders
+
+Click **＋** to add or remove folders at any time. Removing a folder keeps your
+favourites and tags, so re-adding it restores them.
+
+The index and thumbnail cache live in
+`%LOCALAPPDATA%\mcp-da-vinci\library\` — never inside this folder, so you can
+move or reinstall the plugin without losing anything. Delete that folder to
+start clean.
+
+## Build a standalone .exe
+
+To hand this to someone who has no Python at all:
+
+```
+python.exe scripts/build_exe.py
+```
+
+Produces a one-folder app (~250 MB, almost all of it Qt) under
+`%LOCALAPPDATA%\mcp-da-vinci\build\dist\MemeSFXLibrary\`. Zip that folder, send
+it, they double-click `MemeSFXLibrary.exe`. Add `--onefile` for a single
+executable instead (starts slower — it unpacks itself each run), or
+`--outdir D:\somewhere` to build elsewhere.
+
+## Command line
+
+The core (`medialib/`) has no Qt in it and runs on its own — useful for
+scripting, and it's how the search ranking gets tuned:
+
+```
+python.exe -m medialib.cli scan
+python.exe -m medialib.cli search "air horn"
+python.exe -m medialib.cli search whoosh --kind audio --limit 10
+python.exe -m medialib.cli roots --add "D:\videos\overlays" --label Overlays
+python.exe -m medialib.cli tags
+python.exe -m medialib.normalize          # filename-normaliser self-test
+```
+
+## Layout
+
+```
+meme-sfx-library/
+├── install.bat            one-time setup: deps + icon + shortcuts
+├── run_panel.bat          double-click to launch
+├── requirements.txt
+├── medialib/              core: scan, index, search, thumbnails  (no Qt)
+├── panel/                 the PySide6 window
+├── scripts/
+│   ├── make_icon.py       draws panel/icon.ico
+│   ├── install_shortcut.py  Desktop + Start Menu (--remove to undo)
+│   ├── build_exe.py       standalone .exe via PyInstaller
+│   └── spike_drag.py      drag-into-Resolve regression harness
+└── NOTES.md               measurements, gotchas, TODOs
+```
+
+## If something goes wrong
+
+- **Nothing happens on double-click** — `run_panel.bat` uses `pythonw.exe`,
+  which has no console. Check `%TEMP%\meme-sfx-panel.log`.
+- **Empty grid** — click **＋** and add a folder, then **⟳**.
+- **Drag does nothing** — if Resolve was started *as administrator* and the
+  panel wasn't, Windows blocks the drag by design. Run both the same way.
+- **`Ctrl+Shift+M` does nothing** — another app owns it; the status bar says so
+  at startup. Everything else still works.
+- **Rebuilding from scratch** — delete
+  `%LOCALAPPDATA%\mcp-da-vinci\library\` and relaunch.

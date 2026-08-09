@@ -1,0 +1,82 @@
+/* Dark theme, tuned to sit next to Resolve without fighting it. */
+
+QWidget {
+    background: #1b1b1b;
+    color: #dcdcdc;
+    font-family: "Segoe UI";
+    font-size: 9pt;
+}
+
+QLineEdit#searchBar {
+    background: #262626;
+    border: 1px solid #3c3c3c;
+    border-radius: 4px;
+    padding: 5px 8px;
+    selection-background-color: #3fa7d6;
+}
+QLineEdit#searchBar:focus {
+    border: 1px solid #3fa7d6;
+}
+
+QToolButton {
+    background: #262626;
+    border: 1px solid #3c3c3c;
+    border-radius: 4px;
+    padding: 4px 9px;
+}
+QToolButton:hover { background: #313131; }
+QToolButton:checked {
+    background: #2f4f61;
+    border: 1px solid #3fa7d6;
+    color: #ffffff;
+}
+
+QListView {
+    background: #202020;
+    border: 1px solid #333333;
+    border-radius: 4px;
+}
+
+QLabel#status { color: #8c8c8c; }
+
+QProgressBar {
+    background: #262626;
+    border: 1px solid #3c3c3c;
+    border-radius: 3px;
+    height: 8px;
+}
+QProgressBar::chunk { background: #3fa7d6; border-radius: 2px; }
+
+QScrollBar:vertical {
+    background: transparent;
+    width: 10px;
+    margin: 0;
+}
+QScrollBar::handle:vertical {
+    background: #454545;
+    border-radius: 5px;
+    min-height: 28px;
+}
+QScrollBar::handle:vertical:hover { background: #565656; }
+QScrollBar::add-line, QScrollBar::sub-line { height: 0; }
+QScrollBar::add-page, QScrollBar::sub-page { background: transparent; }
+
+QDialog, QTableWidget { background: #1f1f1f; }
+QTableWidget {
+    gridline-color: #333333;
+    border: 1px solid #333333;
+    selection-background-color: #2f4f61;
+}
+QHeaderView::section {
+    background: #262626;
+    border: 0;
+    border-bottom: 1px solid #3c3c3c;
+    padding: 4px;
+}
+QPushButton {
+    background: #2b2b2b;
+    border: 1px solid #3c3c3c;
+    border-radius: 4px;
+    padding: 5px 12px;
+}
+QPushButton:hover { background: #343434; }
