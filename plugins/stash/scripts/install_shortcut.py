@@ -14,7 +14,7 @@ import os
 import sys
 from pathlib import Path
 
-NAME = "Meme & SFX Library.lnk"
+NAME = "Stash.lnk"
 
 
 def _targets() -> tuple[Path, Path, Path]:

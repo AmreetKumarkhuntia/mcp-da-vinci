@@ -11,8 +11,8 @@ from __future__ import annotations
 from PySide6.QtCore import QObject, QRunnable, QThreadPool, Signal
 from PySide6.QtGui import QImage
 
-from medialib import thumbs
-from medialib.model import MediaItem
+from stashlib import thumbs
+from stashlib.model import MediaItem
 
 
 class _Signals(QObject):

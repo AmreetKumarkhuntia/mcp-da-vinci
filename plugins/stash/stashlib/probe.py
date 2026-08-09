@@ -27,11 +27,17 @@ def silence_native_stderr():
     try:
         saved = os.dup(2)
     except OSError:
+        # No usable stderr to silence — nothing to do.
         yield
         return
     devnull = os.open(os.devnull, os.O_WRONLY)
     try:
-        sys.stderr.flush()
+        # sys.stderr is None in a --windowed PyInstaller build, so this must be
+        # guarded: an AttributeError here escapes into the caller and takes the
+        # whole render down. That is what silently killed audio waveforms (and
+        # only audio) in the frozen app while they worked fine under Python.
+        if sys.stderr is not None:
+            sys.stderr.flush()
         os.dup2(devnull, 2)
         yield
     finally:

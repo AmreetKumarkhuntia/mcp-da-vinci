@@ -1,7 +1,9 @@
-# Meme & SFX Library
+# Stash
 
-A searchable browser for your meme clips, green screens, sound effects and
-overlays — that **drags straight into DaVinci Resolve**.
+A media library for video editing. Point it at your folders of meme clips,
+sound effects, green screens and overlays; it indexes and categorises them,
+makes them searchable, lets you preview them, and **drags them straight into
+DaVinci Resolve**.
 
 Everything it needs is in this one folder. It is standalone: it does not import
 the MCP server, and it does **not** need DaVinci Resolve Studio. It works on the
@@ -98,7 +100,7 @@ Vendor serials, ripper-site tags, bitrate/resolution noise and glued CamelCase
 all get stripped, so typing what you actually mean finds the file.
 
 **Aliases** let you name things the way you think of them. Edit
-`%LOCALAPPDATA%\mcp-da-vinci\library\tags.json`:
+`%LOCALAPPDATA%\Stash\library\tags.json`:
 
 ```json
 {
@@ -116,7 +118,7 @@ Click **＋** to add or remove folders at any time. Removing a folder keeps your
 favourites and tags, so re-adding it restores them.
 
 The index and thumbnail cache live in
-`%LOCALAPPDATA%\mcp-da-vinci\library\` — never inside this folder, so you can
+`%LOCALAPPDATA%\Stash\library\` — never inside this folder, so you can
 move or reinstall the plugin without losing anything. Delete that folder to
 start clean.
 
@@ -126,8 +128,8 @@ start clean.
 python.exe scripts/build_installer.py
 ```
 
-Produces **one file**, `MemeSFXLibrary-Setup-1.0.0.exe` (~77 MB), under
-`%LOCALAPPDATA%\mcp-da-vinci\build\installer\`. Send that to anyone. It:
+Produces **one file**, `Stash-Setup-1.0.0.exe` (~77 MB), under
+`%LOCALAPPDATA%\Stash\build\installer\`. Send that to anyone. It:
 
 - installs **per-user, with no admin rights** (into `%LOCALAPPDATA%\Programs`)
 - creates Start Menu and optional Desktop shortcuts
@@ -142,13 +144,13 @@ installer from the last app build (~40 s instead of ~5 min).
 Silent install / uninstall, for scripted deployment:
 
 ```
-MemeSFXLibrary-Setup-1.0.0.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART
-"%LOCALAPPDATA%\Programs\MemeSFXLibrary\unins000.exe" /VERYSILENT
+Stash-Setup-1.0.0.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART
+"%LOCALAPPDATA%\Programs\Stash\unins000.exe" /VERYSILENT
 ```
 
 **Uninstalling never touches your library data unless you say so.** An
 interactive uninstall asks whether to also delete the index, thumbnails,
-favourites and tags in `%LOCALAPPDATA%\mcp-da-vinci\library\`, defaulting to
+favourites and tags in `%LOCALAPPDATA%\Stash\library\`, defaulting to
 keeping them. A *silent* uninstall always keeps them — `/SUPPRESSMSGBOXES`
 answers prompts with Yes regardless of the declared default, so the script skips
 the question entirely rather than risk deleting data unattended.
@@ -159,8 +161,8 @@ the question entirely rather than risk deleting data unattended.
 python.exe scripts/build_exe.py
 ```
 
-A one-folder app (~245 MB) under `%LOCALAPPDATA%\mcp-da-vinci\build\dist\`. Zip
-and send; they double-click `MemeSFXLibrary.exe`. `--onefile` makes a single
+A one-folder app (~245 MB) under `%LOCALAPPDATA%\Stash\build\dist\`. Zip
+and send; they double-click `Stash.exe`. `--onefile` makes a single
 executable (slower to start — it unpacks each run), `--outdir` builds elsewhere.
 
 > Not a DLL, deliberately. A DLL is loaded *by* a host process and cannot be
@@ -170,28 +172,28 @@ executable (slower to start — it unpacks each run), `--outdir` builds elsewher
 
 ## Command line
 
-The core (`medialib/`) has no Qt in it and runs on its own — useful for
+The core (`stashlib/`) has no Qt in it and runs on its own — useful for
 scripting, and it's how the search ranking gets tuned:
 
 ```
-python.exe -m medialib.cli scan
-python.exe -m medialib.cli search "air horn"
-python.exe -m medialib.cli search whoosh --kind audio --limit 10
-python.exe -m medialib.cli roots --add "D:\videos\overlays" --label Overlays
-python.exe -m medialib.cli tags
-python.exe -m medialib.normalize          # filename-normaliser self-test
+python.exe -m stashlib.cli scan
+python.exe -m stashlib.cli search "air horn"
+python.exe -m stashlib.cli search whoosh --kind audio --limit 10
+python.exe -m stashlib.cli roots --add "D:\videos\overlays" --label Overlays
+python.exe -m stashlib.cli tags
+python.exe -m stashlib.normalize          # filename-normaliser self-test
 ```
 
 ## Layout
 
 ```
-meme-sfx-library/
+stash/
 ├── install.bat            one-time setup: deps + icon + shortcuts
 ├── run_panel.bat          double-click to launch
 ├── requirements.txt
 ├── installer/
-│   └── MemeSFXLibrary.iss Inno Setup script -> Setup.exe with uninstaller
-├── medialib/              core: scan, index, search, thumbnails  (no Qt)
+│   └── Stash.iss          Inno Setup script -> Setup.exe with uninstaller
+├── stashlib/              core: scan, index, search, thumbnails  (no Qt)
 ├── panel/                 the PySide6 window
 ├── scripts/
 │   ├── make_icon.py       draws panel/icon.ico
@@ -212,4 +214,4 @@ meme-sfx-library/
 - **`Ctrl+Shift+M` does nothing** — another app owns it; the status bar says so
   at startup. Everything else still works.
 - **Rebuilding from scratch** — delete
-  `%LOCALAPPDATA%\mcp-da-vinci\library\` and relaunch.
+  `%LOCALAPPDATA%\Stash\library\` and relaunch.

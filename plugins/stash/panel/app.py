@@ -15,7 +15,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from medialib.library import Library
+from stashlib.library import Library
 
 from .filters import KindFilter, SearchBar
 from .hotkey import DEFAULT_LABEL as hotkey_label
@@ -33,8 +33,8 @@ RESULT_LIMIT = 400
 class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
-        self.setWindowTitle("Meme & SFX library")
-        self.settings = QSettings("mcp-da-vinci", "panel")
+        self.setWindowTitle("Stash — media library")
+        self.settings = QSettings("Stash", "panel")
 
         self.library = Library()
         self.worker: RefreshWorker | None = None

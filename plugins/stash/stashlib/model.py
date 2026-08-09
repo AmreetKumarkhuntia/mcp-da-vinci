@@ -25,7 +25,7 @@ class MediaItem:
     thumb_state: int = 0
 
     # Session-lifetime thumbnail cache. Typed as ``object`` on purpose: the Qt
-    # layer parks a QPixmap here, and medialib must never import PySide6.
+    # layer parks a QPixmap here, and stashlib must never import PySide6.
     thumb: object | None = None
 
     # merged in at load time, not stored on this row

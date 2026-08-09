@@ -1,4 +1,4 @@
-"""Build a standalone MemeSFXLibrary.exe with PyInstaller.
+"""Build a standalone Stash.exe with PyInstaller.
 
     python.exe scripts/build_exe.py                 # build
     python.exe scripts/build_exe.py --outdir D:\\apps
@@ -25,12 +25,12 @@ import sys
 import tempfile
 from pathlib import Path
 
-APP_NAME = "MemeSFXLibrary"
+APP_NAME = "Stash"
 
 
 def _default_outdir() -> Path:
     base = os.environ.get("LOCALAPPDATA") or tempfile.gettempdir()
-    return Path(base) / "mcp-da-vinci" / "build"
+    return Path(base) / "Stash" / "build"
 
 
 def ensure_pyinstaller() -> bool:

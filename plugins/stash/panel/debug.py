@@ -11,9 +11,9 @@ or, when the launcher makes that awkward — a shortcut, a frozen .exe, or a
 process started from WSL, where environment variables do NOT cross into
 Windows — just create an empty marker file:
 
-    %LOCALAPPDATA%\\mcp-da-vinci\\library\\debug.on
+    %LOCALAPPDATA%\\Stash\\library\\debug.on
 
-Writes to %LOCALAPPDATA%\\mcp-da-vinci\\library\\panel-debug.log. Off by
+Writes to %LOCALAPPDATA%\\Stash\\library\\panel-debug.log. Off by
 default and costs nothing when off.
 """
 
@@ -27,7 +27,7 @@ from pathlib import Path
 
 def _folder() -> Path:
     base = os.environ.get("LOCALAPPDATA") or tempfile.gettempdir()
-    folder = Path(base) / "mcp-da-vinci" / "library"
+    folder = Path(base) / "Stash" / "library"
     folder.mkdir(parents=True, exist_ok=True)
     return folder
 

@@ -11,7 +11,7 @@ import sys
 from pathlib import Path
 
 # Works whether this is run as `-m panel`, as a bare script path, or from a
-# PyInstaller bundle: put the plugin folder on sys.path so `medialib` and
+# PyInstaller bundle: put the plugin folder on sys.path so `stashlib` and
 # `panel` resolve without an install step.
 _PLUGIN_DIR = Path(__file__).resolve().parent.parent
 if str(_PLUGIN_DIR) not in sys.path:
@@ -39,8 +39,8 @@ def resource(name: str) -> Path:
 
 def main() -> int:
     app = QApplication(sys.argv)
-    app.setApplicationName("Meme & SFX library")
-    app.setOrganizationName("mcp-da-vinci")
+    app.setApplicationName("Stash")
+    app.setOrganizationName("Stash")
 
     icon = resource("icon.ico")
     if icon.exists():

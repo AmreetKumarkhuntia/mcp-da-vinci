@@ -1,10 +1,10 @@
 """Dev harness for the library core — no Qt involved.
 
-    python.exe -m medialib.cli scan
-    python.exe -m medialib.cli search "air horn"
-    python.exe -m medialib.cli search whoosh --kind audio --limit 10
-    python.exe -m medialib.cli roots
-    python.exe -m medialib.cli roots --add "D:\\videos\\overlays" --label Overlays
+    python.exe -m stashlib.cli scan
+    python.exe -m stashlib.cli search "air horn"
+    python.exe -m stashlib.cli search whoosh --kind audio --limit 10
+    python.exe -m stashlib.cli roots
+    python.exe -m stashlib.cli roots --add "D:\\videos\\overlays" --label Overlays
 
 This is how the ranker gets tuned: change a weight, re-run the golden queries,
 compare. It exists before the GUI on purpose.
@@ -92,7 +92,7 @@ def cmd_tags(lib: Library, args) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="medialib", description=__doc__)
+    parser = argparse.ArgumentParser(prog="stashlib", description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
 
     sub.add_parser("scan", help="rescan roots and probe new files")

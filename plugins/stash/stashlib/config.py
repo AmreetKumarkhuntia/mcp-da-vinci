@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-APP_DIR_NAME = "mcp-da-vinci"
+APP_DIR_NAME = "Stash"
 
 AUDIO_EXTS = frozenset(
     {".mp3", ".wav", ".m4a", ".aac", ".flac", ".ogg", ".opus", ".wma", ".aif", ".aiff"}

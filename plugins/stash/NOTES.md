@@ -1,4 +1,4 @@
-# Meme + SFX library panel — findings & friction log
+# Stash — findings & friction log
 
 Companion to `docs/fusion-3d-notes.md`. Everything here was measured on this
 machine (Resolve 21.0.0.48 **free** edition, Windows Python `E:\Python\python.exe`
@@ -43,7 +43,7 @@ Notes:
 | Warm rescan, no changes | **0.14 s** — cheap enough to run unconditionally on every launch |
 | Probe failures | 37 of 5,063 (0.7 %) — malformed ID3 / truncated mp3s; they stay listed and searchable, just without a duration |
 | Search, full ranked pass | **0.1–10 ms** over all 5,063 items |
-| Database | `C:\Users\Amreet khuntia\AppData\Local\mcp-da-vinci\library\index.db` |
+| Database | `C:\Users\Amreet khuntia\AppData\Local\Stash\library\index.db` |
 
 Consequences that changed the design:
 
@@ -125,7 +125,7 @@ CopyAction  ...\gifs\memes\lol.png
 ### Diagnosing drag problems
 
 `panel/debug.py` logs presses, `startDrag` entry and the `drag.exec` result to
-`%LOCALAPPDATA%\mcp-da-vinci\library\panel-debug.log`. Turn it on by creating an
+`%LOCALAPPDATA%\Stash\library\panel-debug.log`. Turn it on by creating an
 empty `debug.on` next to that log, then read the three-line signature:
 
 | Log shows | Meaning |
@@ -143,6 +143,28 @@ A drag can also be tested without touching Resolve: float the window topmost and
 synthesise press/move/release inside its own client area with `SetCursorPos` +
 `mouse_event`. `startDrag` firing with `IgnoreAction` is the expected pass —
 the drop lands on nothing.
+
+## `sys.stderr` is None in a --windowed frozen build
+
+Audio waveforms rendered fine under Python and produced **zero** files in the
+PyInstaller app — 29 jpg, 0 png. Video and image thumbnails were unaffected.
+
+Cause: `probe.silence_native_stderr()` called `sys.stderr.flush()`, and a
+`--windowed` PyInstaller build sets `sys.stderr` to `None`. The resulting
+`AttributeError` escaped the context manager into `_render_waveform`, which
+`thumbs.ensure()` caught and turned into "no thumbnail". Only the audio path
+used that helper, which is exactly why only audio broke.
+
+Guard any `sys.stdout`/`sys.stderr` use with a None check in code that can run
+frozen. Test it the cheap way rather than by rebuilding:
+
+```python
+import sys; sys.stderr = None    # what --windowed does
+```
+
+**Lesson:** verify the *shipped artifact*, not just the source. Two bugs in
+this project — this one and the `ItemIsDragEnabled` flag — were invisible in
+the environment they were developed in.
 
 ## Gotchas
 
@@ -166,7 +188,7 @@ the drop lands on nothing.
 
 ## Filename normalization
 
-`medialib/normalize.py` — the highest-value 60 lines in the project. The library
+`stashlib/normalize.py` — the highest-value 60 lines in the project. The library
 mixes incompatible naming regimes and naive matching fails on all of them:
 
 | Raw stem | Normalized |
@@ -186,12 +208,12 @@ Two subtleties that cost a debugging cycle each:
    character, so in `Episode 11_1080p` there is no word boundary before `1080p`
    and `\b\d{3,4}p\b` silently fails to match.
 
-Golden set: `CORPUS` in `medialib/normalize.py`, run with
-`python.exe -m medialib.normalize` (20/20). Re-run after any pattern change.
+Golden set: `CORPUS` in `stashlib/normalize.py`, run with
+`python.exe -m stashlib.normalize` (20/20). Re-run after any pattern change.
 
 ## Golden search queries
 
-`python.exe -m medialib.cli search <query>` — all verified working:
+`python.exe -m stashlib.cli search <query>` — all verified working:
 
 | Query | Top hit | Proves |
 |---|---|---|

@@ -1,4 +1,4 @@
-# Meme & SFX library panel — install into WINDOWS Python:
+# Stash panel — install into WINDOWS Python:
 #   python.exe -m pip install -r requirements.txt
 #
 # QtMultimedia is not in PySide6-Essentials as of 6.11 (it moved to Addons),

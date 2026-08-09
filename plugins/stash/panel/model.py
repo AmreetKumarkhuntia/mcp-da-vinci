@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from PySide6.QtCore import QAbstractListModel, QModelIndex, Qt
 
-from medialib.model import MediaItem
+from stashlib.model import MediaItem
 
 
 class LibraryModel(QAbstractListModel):

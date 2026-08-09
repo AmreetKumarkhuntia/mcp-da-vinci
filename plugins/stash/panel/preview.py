@@ -21,7 +21,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from medialib.model import MediaItem
+from stashlib.model import MediaItem
 
 
 def _human(item: MediaItem) -> str:

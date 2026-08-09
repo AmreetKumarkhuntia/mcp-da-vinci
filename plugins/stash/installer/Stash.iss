@@ -1,4 +1,4 @@
-; Inno Setup script for the Meme & SFX Library panel.
+; Inno Setup script for the Stash panel.
 ;
 ; Build it with:  python.exe scripts/build_installer.py
 ; which produces the PyInstaller app first and then compiles this.
@@ -6,22 +6,24 @@
 ; Installs per-user into %LOCALAPPDATA%\Programs, so there is no UAC prompt and
 ; no admin account needed — the panel writes only to the user profile anyway.
 
-#define AppName        "Meme & SFX Library"
-#define AppShortName   "MemeSFXLibrary"
+#define AppName        "Stash"
+#define AppShortName   "Stash"
 #define AppVersion     "1.0.0"
 #define AppPublisher   "Amreet Khuntia"
-#define AppExe         "MemeSFXLibrary.exe"
+#define AppExe         "Stash.exe"
 
 ; Passed in by build_installer.py: /DSourceDir=... /DOutputDir=...
 #ifndef SourceDir
-  #define SourceDir "..\..\..\dist\MemeSFXLibrary"
+  #define SourceDir "..\..\..\dist\Stash"
 #endif
 #ifndef OutputDir
   #define OutputDir "..\dist"
 #endif
 
 [Setup]
-AppId={{7C1F4E8A-3D6B-4A2E-9F17-2B5C8D3A6E41}
+; New GUID for the rename: a different product identity, so the old
+; "Meme & SFX Library" entry is never silently upgraded or replaced by this one.
+AppId={{2F8B71C4-9E5A-4D63-B0A8-6C4E17D95B32}
 AppName={#AppName}
 AppVersion={#AppVersion}
 AppVerName={#AppName} {#AppVersion}
@@ -82,7 +84,7 @@ begin
     if UninstallSilent() then
       Exit;
 
-    DataDir := ExpandConstant('{localappdata}\mcp-da-vinci\library');
+    DataDir := ExpandConstant('{localappdata}\Stash\library');
     if DirExists(DataDir) then
     begin
       if MsgBox('Also delete your library index, thumbnails, favourites and tags?'

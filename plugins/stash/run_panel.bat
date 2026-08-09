@@ -1,6 +1,6 @@
 @echo off
 rem ---------------------------------------------------------------------------
-rem  Meme & SFX library — double-click this to open the panel.
+rem  Stash — double-click this to open the panel.
 rem
 rem  Deliberately does NOT change the working directory. This folder often lives
 rem  on a UNC path (\\wsl.localhost\...), which cmd.exe cannot use as a CWD, so

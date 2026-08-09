@@ -14,7 +14,7 @@ Typing "water pour" must find the first; typing "sound effect" must not match
 vendor codes, ripper-site tags, resolution/codec markers and boilerplate
 stripped.
 
-Run `python.exe -m medialib.normalize` to check the built-in corpus.
+Run `python.exe -m stashlib.normalize` to check the built-in corpus.
 """
 
 from __future__ import annotations

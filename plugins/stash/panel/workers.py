@@ -18,7 +18,7 @@ class RefreshWorker(QThread):
     failed = Signal(str)
 
     def run(self) -> None:  # noqa: D102 - QThread entry point
-        from medialib import index, store
+        from stashlib import index, store
 
         conn = None
         try:

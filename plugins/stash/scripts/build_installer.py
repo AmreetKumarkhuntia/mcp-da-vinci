@@ -45,7 +45,7 @@ def find_iscc() -> Path | None:
 
 def app_dir() -> Path:
     base = os.environ.get("LOCALAPPDATA") or "."
-    return Path(base) / "mcp-da-vinci" / "build" / "dist" / "MemeSFXLibrary"
+    return Path(base) / "Stash" / "build" / "dist" / "Stash"
 
 
 def main() -> int:
@@ -55,7 +55,7 @@ def main() -> int:
     args = parser.parse_args()
 
     plugin_dir = Path(__file__).resolve().parent.parent
-    script = plugin_dir / "installer" / "MemeSFXLibrary.iss"
+    script = plugin_dir / "installer" / "Stash.iss"
 
     iscc = find_iscc()
     if iscc is None:
@@ -73,7 +73,7 @@ def main() -> int:
             return result.returncode
 
     source = app_dir()
-    if not (source / "MemeSFXLibrary.exe").exists():
+    if not (source / "Stash.exe").exists():
         print(f"App build not found at {source}. Run without --skip-app first.")
         return 1
 
@@ -93,7 +93,7 @@ def main() -> int:
         print("\nInstaller compile failed — see the output above.")
         return result.returncode
 
-    built = sorted(outdir.glob("MemeSFXLibrary-Setup-*.exe"))
+    built = sorted(outdir.glob("Stash-Setup-*.exe"))
     if built:
         installer = built[-1]
         size = installer.stat().st_size / 1_000_000

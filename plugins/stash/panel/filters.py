@@ -22,7 +22,7 @@ KINDS: tuple[tuple[str, str | None], ...] = (
 class SearchBar(QLineEdit):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
-        self.setPlaceholderText("search memes & sfx…")
+        self.setPlaceholderText("search your stash…")
         self.setClearButtonEnabled(True)
         self.setObjectName("searchBar")
 
