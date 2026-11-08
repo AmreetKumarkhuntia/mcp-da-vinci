@@ -147,6 +147,8 @@ prefer them over re-probing or re-deriving:
 - `davinci-3d-camera-move` — staging-first camera-move recipe (clarify the staging first).
 - `docs/fusion-3d-notes.md` — known limits + tooling TODOs. Notably: the generator clip is a
   fixed **5 s** and has **no script resize**, so 8 s/16 s requests need a manual drag-extend + re-time.
+- `docs/media-pool-todos.md` — the media-pool side: the unbuilt MCP library surface, the
+  Studio-only playhead insert, and the `ImportMedia` bin-targeting bug in `tools/edit.py`.
 - 3D conveniences (prefer over raw setters): `fusion_connect_scene` (next free Merge3D
   `SceneInput`), `fusion_enable_lighting` / `fusion_enable_motion_blur` (one-shot Renderer3D
   setup), `fusion_set_xyz` / `fusion_set_scale3d` (clears ScaleLock) / `fusion_set_color`.
